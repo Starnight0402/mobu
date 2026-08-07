@@ -1,14 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Insight } from '../types';
+import React from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { motion } from 'motion/react';
 import { Sparkles, TrendingUp, Zap, Lightbulb } from 'lucide-react';
 
 export const InsightsView: React.FC = () => {
-  const [insights, setInsights] = useState<Insight[]>([]);
-
-  useEffect(() => {
-    fetch('/api/insights').then(res => res.json()).then(setInsights);
-  }, []);
+  const insights = useQuery(api.insights.list) ?? [];
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -28,8 +25,8 @@ export const InsightsView: React.FC = () => {
 
       <div className="space-y-6">
         {insights.map((insight, i) => (
-          <motion.div 
-            key={insight.id}
+          <motion.div
+            key={insight._id}
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.1 }}
@@ -43,7 +40,7 @@ export const InsightsView: React.FC = () => {
               <div className="flex justify-between items-center">
                 <h3 className="text-xl font-medium tracking-tight">{insight.title}</h3>
                 <span className="text-[10px] font-mono text-white/20">
-                  {new Date(insight.timestamp).toLocaleDateString()}
+                  {new Date(insight._creationTime).toLocaleDateString()}
                 </span>
               </div>
               <p className="text-white/60 leading-relaxed">{insight.content}</p>

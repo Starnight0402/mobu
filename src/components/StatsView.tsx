@@ -1,21 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { 
+import React from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
-import { Stats, TrackingEntry, AppSettings } from '../types';
 import { motion } from 'motion/react';
 
 export const StatsView: React.FC = () => {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [history, setHistory] = useState<TrackingEntry[]>([]);
-  const [settings, setSettings] = useState<AppSettings>({ currency: 'USD', timezone: 'UTC' });
-
-  useEffect(() => {
-    fetch('/api/stats').then(res => res.json()).then(setStats);
-    fetch('/api/tracking').then(res => res.json()).then(setHistory);
-    fetch('/api/settings').then(res => res.json()).then(setSettings);
-  }, []);
+  const stats = useQuery(api.tracking.stats);
+  const history = useQuery(api.tracking.list) ?? [];
+  const settings = useQuery(api.settings.get) ?? { currency: 'USD', timezone: 'UTC' };
 
   const getCurrencySymbol = (code: string) => {
     const symbols: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', INR: '₹', JPY: '¥' };
@@ -29,7 +24,7 @@ export const StatsView: React.FC = () => {
     .slice(-10)
     .reverse()
     .map(h => ({
-      time: new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: new Date(h._creationTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       value: h.value
     }));
 
@@ -38,7 +33,7 @@ export const StatsView: React.FC = () => {
     .slice(-10)
     .reverse()
     .map(h => ({
-      time: new Date(h.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      time: new Date(h._creationTime).toLocaleDateString([], { month: 'short', day: 'numeric' }),
       amount: h.value
     }));
 

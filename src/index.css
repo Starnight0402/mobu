@@ -14,6 +14,16 @@
 @layer base {
   body {
     @apply bg-black text-white font-sans antialiased overflow-x-hidden;
+    /* Tells the browser to render native controls (select dropdowns,
+       scrollbars, date pickers) in dark mode too — without this, <option>
+       lists default to a white popup with our white text, making unselected
+       options invisible. Phase 4 (light mode) will make this theme-aware. */
+    color-scheme: dark;
+  }
+
+  select option {
+    background-color: #0a0a0a;
+    color: #ffffff;
   }
 }
 

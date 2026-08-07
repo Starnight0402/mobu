@@ -1,65 +1,46 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Stats, TrackingEntry, AppSettings, Memory, Insight, Capsule, WidgetConfig, WidgetSize } from '../types';
+import React, { useState } from 'react';
+import { useQuery, useMutation } from 'convex/react';
+import { motion } from 'motion/react';
+import { api } from '../../convex/_generated/api';
+import { WidgetConfig, WidgetSize } from '../types';
 import { TogetherCalendar } from './TogetherCalendar';
-import { 
-  Heart, 
-  Wallet, 
-  Smile, 
-  Activity, 
-  Coffee, 
-  Target, 
-  Image as ImageIcon, 
-  Sparkles, 
+import {
+  Wallet,
+  Smile,
+  Activity,
+  Coffee,
+  Image as ImageIcon,
+  Sparkles,
   Lock,
   ChevronRight,
   Maximize2,
-  Move,
-  Calendar as CalendarIcon
 } from 'lucide-react';
 
+const DEFAULT_WIDGETS: WidgetConfig[] = [
+  { id: 'calendar', size: 'small', order: 1 },
+  { id: 'memories', size: 'wide', order: 2 },
+  { id: 'insight', size: 'tall', order: 3 },
+  { id: 'stats', size: 'small', order: 4 },
+  { id: 'capsule', size: 'small', order: 5 },
+  { id: 'activity', size: 'wide', order: 6 },
+];
+
 export const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [recent, setRecent] = useState<TrackingEntry[]>([]);
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [insights, setInsights] = useState<Insight[]>([]);
-  const [capsules, setCapsules] = useState<Capsule[]>([]);
-  const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
-  const [settings, setSettings] = useState<AppSettings>({ currency: 'USD', timezone: 'UTC' });
   const [isEditing, setIsEditing] = useState(false);
 
-  useEffect(() => {
-    fetch('/api/stats').then(res => res.json()).then(setStats);
-    fetch('/api/tracking').then(res => res.json()).then(setRecent);
-    fetch('/api/memories').then(res => res.json()).then(setMemories);
-    fetch('/api/insights').then(res => res.json()).then(setInsights);
-    fetch('/api/capsules').then(res => res.json()).then(setCapsules);
-    fetch('/api/settings').then(res => res.json()).then(setSettings);
-    fetch('/api/widgets').then(res => res.json()).then(data => {
-      if (data.length > 0) {
-        // Map old 'score' id to 'calendar' if it exists and ensure uniqueness
-        const mapped = data.map(w => w.id === 'score' ? { ...w, id: 'calendar' } : w);
-        const unique = mapped.reduce((acc: WidgetConfig[], current) => {
-          const x = acc.find(item => item.id === current.id);
-          if (!x) {
-            return acc.concat([current]);
-          } else {
-            return acc;
-          }
-        }, []);
-        setWidgets(unique);
-      } else {
-        setWidgets([
-          { id: 'calendar', size: 'small', order: 1 },
-          { id: 'memories', size: 'wide', order: 2 },
-          { id: 'insight', size: 'tall', order: 3 },
-          { id: 'stats', size: 'small', order: 4 },
-          { id: 'capsule', size: 'small', order: 5 },
-          { id: 'activity', size: 'wide', order: 6 }
-        ]);
-      }
-    });
-  }, []);
+  const stats = useQuery(api.tracking.stats);
+  const recent = useQuery(api.tracking.list) ?? [];
+  const memories = useQuery(api.memories.list) ?? [];
+  const insights = useQuery(api.insights.list) ?? [];
+  const capsules = useQuery(api.capsules.list) ?? [];
+  const settings = useQuery(api.settings.get) ?? { currency: 'USD', timezone: 'UTC' };
+  const widgetsDoc = useQuery(api.widgets.list);
+  const saveWidgets = useMutation(api.widgets.saveAll);
+
+  const widgets: WidgetConfig[] =
+    widgetsDoc && widgetsDoc.length > 0
+      ? widgetsDoc.map((w) => ({ id: w.widgetId, size: w.size, order: w.order }))
+      : DEFAULT_WIDGETS;
 
   const getCurrencySymbol = (code: string) => {
     const symbols: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', INR: '₹', JPY: '¥' };
@@ -68,25 +49,15 @@ export const Dashboard: React.FC = () => {
 
   const cycleSize = (id: string) => {
     const sizes: WidgetSize[] = ['small', 'wide', 'tall', 'large'];
-    setWidgets(prev => {
-      const newWidgets = prev.map(w => {
-        if (w.id === id) {
-          const currentIndex = sizes.indexOf(w.size);
-          const nextIndex = (currentIndex + 1) % sizes.length;
-          return { ...w, size: sizes[nextIndex] };
-        }
-        return w;
-      });
-      
-      // Save to server
-      fetch('/api/widgets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ widgets: newWidgets.map((w, i) => ({ id: w.id, size: w.size, order: i })) })
-      });
-      
-      return newWidgets;
+    const newWidgets = widgets.map((w) => {
+      if (w.id === id) {
+        const currentIndex = sizes.indexOf(w.size);
+        const nextIndex = (currentIndex + 1) % sizes.length;
+        return { ...w, size: sizes[nextIndex] };
+      }
+      return w;
     });
+    saveWidgets({ widgets: newWidgets.map((w, i) => ({ id: w.id, size: w.size, order: i })) });
   };
 
   const getSizeClass = (size: WidgetSize) => {
@@ -99,19 +70,19 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const upcomingCapsule = capsules.find(c => new Date(c.unlock_date) > new Date());
+  const upcomingCapsule = capsules.find((c) => new Date(c.unlockDate) > new Date());
 
   const renderWidget = (widget: WidgetConfig) => {
     const commonProps = {
       layout: true,
       initial: { opacity: 0, scale: 0.9 },
       animate: { opacity: 1, scale: 1 },
-      className: `glass p-6 relative group overflow-hidden ${getSizeClass(widget.size)}`
+      className: `glass p-6 relative group overflow-hidden ${getSizeClass(widget.size)}`,
     };
 
     const editOverlay = isEditing && (
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-10 flex items-center justify-center gap-2">
-        <button 
+        <button
           onClick={() => cycleSize(widget.id)}
           className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
         >
@@ -141,10 +112,10 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className={`grid gap-2 ${widget.size === 'small' ? 'grid-cols-1' : widget.size === 'wide' ? 'grid-cols-3' : 'grid-cols-2'}`}>
               {memories.slice(0, widget.size === 'small' ? 1 : widget.size === 'large' ? 4 : 3).map((memory) => (
-                <div key={memory.id} className="aspect-square rounded-xl overflow-hidden glass border border-white/5">
-                  <img 
-                    src={memory.image_url} 
-                    alt={memory.title} 
+                <div key={memory._id} className="aspect-square rounded-xl overflow-hidden glass border border-white/5">
+                  <img
+                    src={memory.imageUrl}
+                    alt={memory.title}
                     className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500"
                     referrerPolicy="no-referrer"
                   />
@@ -186,7 +157,7 @@ export const Dashboard: React.FC = () => {
               </div>
               <div>
                 <p className="text-xl font-mono">
-                  {getCurrencySymbol(settings.currency)}{stats?.totalMoney.toFixed(0)}
+                  {getCurrencySymbol(settings.currency)}{(stats?.totalMoney ?? 0).toFixed(0)}
                 </p>
                 <p className="text-[8px] uppercase tracking-widest text-white/20">Spent</p>
               </div>
@@ -205,7 +176,7 @@ export const Dashboard: React.FC = () => {
               <div className="space-y-1">
                 <p className="text-xs font-medium truncate">{upcomingCapsule.title}</p>
                 <p className="text-[8px] font-mono text-nothing-purple">
-                  {new Date(upcomingCapsule.unlock_date).toLocaleDateString()}
+                  {new Date(upcomingCapsule.unlockDate).toLocaleDateString()}
                 </p>
               </div>
             ) : (
@@ -222,8 +193,8 @@ export const Dashboard: React.FC = () => {
               <h3 className="text-[10px] uppercase tracking-widest font-medium">Activity</h3>
             </div>
             <div className="space-y-2">
-              {recent.slice(0, widget.size === 'small' ? 1 : 2).map(entry => (
-                <div key={entry.id} className="flex items-center justify-between text-xs">
+              {recent.slice(0, widget.size === 'small' ? 1 : 2).map((entry) => (
+                <div key={entry._id} className="flex items-center justify-between text-xs">
                   <span className="text-white/60 truncate mr-2">{entry.category || entry.type}</span>
                   <span className="font-mono text-white/40">{entry.value}</span>
                 </div>
@@ -243,7 +214,7 @@ export const Dashboard: React.FC = () => {
           <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">Nexus</h1>
           <p className="text-white/40 text-[10px] uppercase tracking-widest">Intelligence Hub</p>
         </div>
-        <button 
+        <button
           onClick={() => setIsEditing(!isEditing)}
           className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-widest border transition-all ${
             isEditing ? 'bg-nothing-purple border-nothing-purple text-white' : 'border-white/10 text-white/40 hover:border-white/20'
@@ -269,7 +240,7 @@ export const Dashboard: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {recent.slice(0, 4).map((entry, i) => (
             <motion.div
-              key={entry.id}
+              key={entry._id}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.05 }}
@@ -284,7 +255,7 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-xs font-medium">{entry.category || entry.type}</p>
-                  <p className="text-[8px] text-white/40 uppercase tracking-wider">{entry.user} • {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-[8px] text-white/40 uppercase tracking-wider">{entry.user} • {new Date(entry._creationTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
               <div className="text-right">

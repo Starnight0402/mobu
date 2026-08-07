@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Authenticated, Unauthenticated, AuthLoading, useQuery } from 'convex/react';
 import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { TrackingForm } from './components/TrackingForm';
@@ -10,10 +11,44 @@ import { GoalsView } from './components/GoalsView';
 import { CapsulesView } from './components/CapsulesView';
 import { InsightsView } from './components/InsightsView';
 import { MapView } from './components/MapView';
+import { SignInScreen } from './components/SignInScreen';
+import { NameSetup } from './components/NameSetup';
 import { motion, AnimatePresence } from 'motion/react';
+import { api } from '../convex/_generated/api';
 
 export default function App() {
+  return (
+    <>
+      <AuthLoading>
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="w-2 h-2 rounded-full bg-nothing-purple animate-pulse" />
+        </div>
+      </AuthLoading>
+      <Unauthenticated>
+        <SignInScreen />
+      </Unauthenticated>
+      <Authenticated>
+        <AuthenticatedApp />
+      </Authenticated>
+    </>
+  );
+}
+
+function AuthenticatedApp() {
+  const currentUser = useQuery(api.users.current);
   const [activeTab, setActiveTab] = useState('home');
+
+  if (currentUser === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-2 h-2 rounded-full bg-nothing-purple animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!currentUser?.name) {
+    return <NameSetup />;
+  }
 
   const renderContent = () => {
     switch (activeTab) {

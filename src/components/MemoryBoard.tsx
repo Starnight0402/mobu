@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useQuery, useMutation } from 'convex/react';
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'motion/react';
-import { Memory } from '../types';
+import { api } from '../../convex/_generated/api';
+import { Memory, Id } from '../types';
 import { Plus, Maximize2, X, Edit2, Trash2, Upload, Save } from 'lucide-react';
 
 interface Node {
@@ -32,83 +34,80 @@ const SHADOW_MAP: Record<string, string> = {
   '2xl': 'shadow-2xl'
 };
 
+type MemoryFormState = Partial<Memory> & { _id?: Id<'memories'> };
+
 export const MemoryBoard: React.FC = () => {
-  const [memories, setMemories] = useState<Memory[]>([]);
+  const memories = useQuery(api.memories.list) ?? [];
+  const createMemory = useMutation(api.memories.create);
+  const updateMemory = useMutation(api.memories.update);
+  const removeMemory = useMutation(api.memories.remove);
+
   const [isAdding, setIsAdding] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  
+
   // Form State
-  const [formData, setFormData] = useState<Partial<Memory>>({});
+  const [formData, setFormData] = useState<MemoryFormState>({});
 
   const containerRef = useRef<HTMLDivElement>(null);
   const x = useMotionValue(0);
   const y = useMotionValue(0);
-  
+
   const springX = useSpring(x, { stiffness: 150, damping: 30 });
   const springY = useSpring(y, { stiffness: 150, damping: 30 });
-
-  const fetchMemories = () => {
-    fetch('/api/memories').then(res => res.json()).then(setMemories);
-  };
-
-  useEffect(() => {
-    fetchMemories();
-  }, []);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, image_url: reader.result as string }));
+        setFormData(prev => ({ ...prev, imageUrl: reader.result as string }));
       };
       reader.readAsDataURL(file);
     }
   };
 
   const saveMemory = async () => {
-    const isNew = !formData.id;
-    const url = isNew ? '/api/memories' : `/api/memories/${formData.id}`;
-    const method = isNew ? 'POST' : 'PUT';
-    
+    const isNew = !formData._id;
+
     const payload = {
-      ...formData,
-      image_url: formData.image_url || `https://picsum.photos/seed/${Math.random()}/1200/800`,
-      card_width: formData.card_width || 220,
-      card_height: formData.card_height || 280,
-      text_size: formData.text_size || 14,
-      font_family: formData.font_family || "'Caveat', cursive",
-      text_color: formData.text_color || '#000000',
-      bg_color: formData.bg_color || '#f8f8f8',
-      border_style: formData.border_style || 'none',
-      border_width: formData.border_width || 0,
-      border_color: formData.border_color || '#000000',
-      shadow_effect: formData.shadow_effect || 'xl',
-      bg_image_overlay: formData.bg_image_overlay || ''
+      title: formData.title || '',
+      description: formData.description,
+      imageUrl: formData.imageUrl || `https://picsum.photos/seed/${Math.random()}/1200/800`,
+      category: formData.category,
+      location: formData.location,
+      lat: formData.lat,
+      lng: formData.lng,
+      cardWidth: formData.cardWidth || 220,
+      cardHeight: formData.cardHeight || 280,
+      textSize: formData.textSize || 14,
+      fontFamily: formData.fontFamily || "'Caveat', cursive",
+      textColor: formData.textColor || '#000000',
+      bgColor: formData.bgColor || '#f8f8f8',
+      borderStyle: formData.borderStyle || 'none',
+      borderWidth: formData.borderWidth || 0,
+      borderColor: formData.borderColor || '#000000',
+      shadowEffect: formData.shadowEffect || 'xl',
+      bgImageOverlay: formData.bgImageOverlay || undefined,
     };
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    if (isNew) {
+      await createMemory(payload);
+    } else {
+      await updateMemory({ id: formData._id as Id<'memories'>, ...payload });
+    }
 
-    if (res.ok) {
-      fetchMemories();
-      setIsAdding(false);
-      setIsEditing(false);
-      if (!isNew) {
-        setSelectedMemory({ ...selectedMemory, ...payload } as Memory);
-      }
+    setIsAdding(false);
+    setIsEditing(false);
+    if (!isNew) {
+      setSelectedMemory({ ...selectedMemory, ...payload } as Memory);
     }
   };
 
   const deleteMemory = async () => {
     if (!selectedMemory) return;
     if (confirm('Are you sure you want to delete this memory?')) {
-      await fetch(`/api/memories/${selectedMemory.id}`, { method: 'DELETE' });
-      fetchMemories();
+      await removeMemory({ id: selectedMemory._id });
       setSelectedMemory(null);
       setIsEditing(false);
     }
@@ -118,18 +117,18 @@ export const MemoryBoard: React.FC = () => {
     setFormData({
       title: '',
       description: '',
-      image_url: '',
-      card_width: 220,
-      card_height: 280,
-      text_size: 14,
-      font_family: "'Caveat', cursive",
-      text_color: '#000000',
-      bg_color: '#f8f8f8',
-      border_style: 'none',
-      border_width: 0,
-      border_color: '#000000',
-      shadow_effect: 'xl',
-      bg_image_overlay: ''
+      imageUrl: '',
+      cardWidth: 220,
+      cardHeight: 280,
+      textSize: 14,
+      fontFamily: "'Caveat', cursive",
+      textColor: '#000000',
+      bgColor: '#f8f8f8',
+      borderStyle: 'none',
+      borderWidth: 0,
+      borderColor: '#000000',
+      shadowEffect: 'xl',
+      bgImageOverlay: '',
     });
     setIsAdding(true);
   };
@@ -151,7 +150,7 @@ export const MemoryBoard: React.FC = () => {
       const posX = Math.cos(angle) * radius + (Math.random() * 100 - 50);
       const posY = Math.sin(angle) * radius + (Math.random() * 100 - 50);
       const rotation = Math.random() * 20 - 10;
-      return { id: memory.id.toString(), x: posX, y: posY, memory, rotation };
+      return { id: memory._id, x: posX, y: posY, memory, rotation };
     });
 
     const generatedEdges: Edge[] = [];
@@ -170,8 +169,8 @@ export const MemoryBoard: React.FC = () => {
     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Title</label>
-        <input 
-          type="text" 
+        <input
+          type="text"
           value={formData.title || ''}
           onChange={e => setFormData({...formData, title: e.target.value})}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30"
@@ -179,7 +178,7 @@ export const MemoryBoard: React.FC = () => {
       </div>
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Description</label>
-        <textarea 
+        <textarea
           value={formData.description || ''}
           onChange={e => setFormData({...formData, description: e.target.value})}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 h-24 resize-none"
@@ -188,11 +187,11 @@ export const MemoryBoard: React.FC = () => {
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Media (Image URL or Upload)</label>
         <div className="flex gap-2">
-          <input 
-            type="text" 
+          <input
+            type="text"
             placeholder="https://..."
-            value={formData.image_url || ''}
-            onChange={e => setFormData({...formData, image_url: e.target.value})}
+            value={formData.imageUrl || ''}
+            onChange={e => setFormData({...formData, imageUrl: e.target.value})}
             className="flex-1 bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm"
           />
           <label className="flex items-center justify-center bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl px-4 cursor-pointer transition-colors">
@@ -200,29 +199,29 @@ export const MemoryBoard: React.FC = () => {
             <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
           </label>
         </div>
-        {formData.image_url && (
+        {formData.imageUrl && (
           <div className="mt-2 h-32 rounded-lg overflow-hidden border border-white/10">
-            <img src={formData.image_url} alt="Preview" className="w-full h-full object-cover" />
+            <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
           </div>
         )}
       </div>
-      
+
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Card Width</label>
-          <input 
-            type="number" 
-            value={formData.card_width || 220}
-            onChange={e => setFormData({...formData, card_width: Number(e.target.value)})}
+          <input
+            type="number"
+            value={formData.cardWidth || 220}
+            onChange={e => setFormData({...formData, cardWidth: Number(e.target.value)})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30"
           />
         </div>
         <div>
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Card Height</label>
-          <input 
-            type="number" 
-            value={formData.card_height || 280}
-            onChange={e => setFormData({...formData, card_height: Number(e.target.value)})}
+          <input
+            type="number"
+            value={formData.cardHeight || 280}
+            onChange={e => setFormData({...formData, cardHeight: Number(e.target.value)})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30"
           />
         </div>
@@ -231,18 +230,18 @@ export const MemoryBoard: React.FC = () => {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Text Size (px)</label>
-          <input 
-            type="number" 
-            value={formData.text_size || 14}
-            onChange={e => setFormData({...formData, text_size: Number(e.target.value)})}
+          <input
+            type="number"
+            value={formData.textSize || 14}
+            onChange={e => setFormData({...formData, textSize: Number(e.target.value)})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30"
           />
         </div>
         <div>
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Font Family</label>
-          <select 
-            value={formData.font_family || "'Caveat', cursive"}
-            onChange={e => setFormData({...formData, font_family: e.target.value})}
+          <select
+            value={formData.fontFamily || "'Caveat', cursive"}
+            onChange={e => setFormData({...formData, fontFamily: e.target.value})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30 appearance-none"
           >
             {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -254,25 +253,25 @@ export const MemoryBoard: React.FC = () => {
         <div>
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Text Color</label>
           <div className="flex items-center gap-2">
-            <input 
-              type="color" 
-              value={formData.text_color || '#000000'}
-              onChange={e => setFormData({...formData, text_color: e.target.value})}
+            <input
+              type="color"
+              value={formData.textColor || '#000000'}
+              onChange={e => setFormData({...formData, textColor: e.target.value})}
               className="w-10 h-10 rounded cursor-pointer bg-transparent border-0 p-0"
             />
-            <span className="text-sm text-white/80 font-mono">{formData.text_color || '#000000'}</span>
+            <span className="text-sm text-white/80 font-mono">{formData.textColor || '#000000'}</span>
           </div>
         </div>
         <div>
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Background Color</label>
           <div className="flex items-center gap-2">
-            <input 
-              type="color" 
-              value={formData.bg_color || '#f8f8f8'}
-              onChange={e => setFormData({...formData, bg_color: e.target.value})}
+            <input
+              type="color"
+              value={formData.bgColor || '#f8f8f8'}
+              onChange={e => setFormData({...formData, bgColor: e.target.value})}
               className="w-10 h-10 rounded cursor-pointer bg-transparent border-0 p-0"
             />
-            <span className="text-sm text-white/80 font-mono">{formData.bg_color || '#f8f8f8'}</span>
+            <span className="text-sm text-white/80 font-mono">{formData.bgColor || '#f8f8f8'}</span>
           </div>
         </div>
       </div>
@@ -280,9 +279,9 @@ export const MemoryBoard: React.FC = () => {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Border Style</label>
-          <select 
-            value={formData.border_style || 'none'}
-            onChange={e => setFormData({...formData, border_style: e.target.value})}
+          <select
+            value={formData.borderStyle || 'none'}
+            onChange={e => setFormData({...formData, borderStyle: e.target.value})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30 appearance-none"
           >
             <option value="none">None</option>
@@ -294,10 +293,10 @@ export const MemoryBoard: React.FC = () => {
         </div>
         <div>
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Border Width (px)</label>
-          <input 
-            type="number" 
-            value={formData.border_width || 0}
-            onChange={e => setFormData({...formData, border_width: Number(e.target.value)})}
+          <input
+            type="number"
+            value={formData.borderWidth || 0}
+            onChange={e => setFormData({...formData, borderWidth: Number(e.target.value)})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30"
           />
         </div>
@@ -307,20 +306,20 @@ export const MemoryBoard: React.FC = () => {
         <div>
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Border Color</label>
           <div className="flex items-center gap-2">
-            <input 
-              type="color" 
-              value={formData.border_color || '#000000'}
-              onChange={e => setFormData({...formData, border_color: e.target.value})}
+            <input
+              type="color"
+              value={formData.borderColor || '#000000'}
+              onChange={e => setFormData({...formData, borderColor: e.target.value})}
               className="w-10 h-10 rounded cursor-pointer bg-transparent border-0 p-0"
             />
-            <span className="text-sm text-white/80 font-mono">{formData.border_color || '#000000'}</span>
+            <span className="text-sm text-white/80 font-mono">{formData.borderColor || '#000000'}</span>
           </div>
         </div>
         <div>
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Shadow Effect</label>
-          <select 
-            value={formData.shadow_effect || 'xl'}
-            onChange={e => setFormData({...formData, shadow_effect: e.target.value})}
+          <select
+            value={formData.shadowEffect || 'xl'}
+            onChange={e => setFormData({...formData, shadowEffect: e.target.value})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30 appearance-none"
           >
             <option value="none">None</option>
@@ -335,11 +334,11 @@ export const MemoryBoard: React.FC = () => {
 
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Background Image Overlay (URL)</label>
-        <input 
-          type="text" 
+        <input
+          type="text"
           placeholder="https://..."
-          value={formData.bg_image_overlay || ''}
-          onChange={e => setFormData({...formData, bg_image_overlay: e.target.value})}
+          value={formData.bgImageOverlay || ''}
+          onChange={e => setFormData({...formData, bgImageOverlay: e.target.value})}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm"
         />
       </div>
@@ -348,7 +347,7 @@ export const MemoryBoard: React.FC = () => {
 
   return (
     <div className="relative h-[80vh] w-full overflow-hidden rounded-[3rem] border border-white/5 bg-[#0a0a0a] backdrop-blur-sm" ref={containerRef}>
-      <div className="absolute inset-0 pointer-events-none opacity-20" 
+      <div className="absolute inset-0 pointer-events-none opacity-20"
            style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
 
       <div className="absolute top-8 left-8 z-10 space-y-1 pointer-events-none">
@@ -357,14 +356,14 @@ export const MemoryBoard: React.FC = () => {
       </div>
 
       <div className="absolute top-8 right-8 z-10 flex gap-2">
-        <button 
+        <button
           onClick={reCenter}
           className="w-10 h-10 rounded-full glass text-white flex items-center justify-center hover:bg-white/10 transition-all"
           title="Recenter"
         >
           <Maximize2 size={16} />
         </button>
-        <button 
+        <button
           onClick={openAddModal}
           className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-all shadow-xl"
         >
@@ -381,25 +380,25 @@ export const MemoryBoard: React.FC = () => {
         <div className="relative" style={{ width: 0, height: 0 }}>
           <svg className="absolute inset-0 overflow-visible pointer-events-none">
             {edges.map((edge, i) => {
-              const w1 = edge.source.memory.card_width || 220;
-              const h1 = edge.source.memory.card_height || 280;
-              const w2 = edge.target.memory.card_width || 220;
-              const h2 = edge.target.memory.card_height || 280;
-              
+              const w1 = edge.source.memory.cardWidth || 220;
+              const h1 = edge.source.memory.cardHeight || 280;
+              const w2 = edge.target.memory.cardWidth || 220;
+              const h2 = edge.target.memory.cardHeight || 280;
+
               const x1 = edge.source.x + w1 / 2;
               const y1 = edge.source.y + h1 / 2;
               const x2 = edge.target.x + w2 / 2;
               const y2 = edge.target.y + h2 / 2;
               const midX = (x1 + x2) / 2;
               const midY = (y1 + y2) / 2;
-              
+
               return (
                 <g key={`edge-${i}`}>
                   <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#ffffff" strokeOpacity="0.15" strokeWidth="2" />
                   <foreignObject x={midX - 40} y={midY - 10} width="80" height="20" className="overflow-visible">
                     <div className="flex justify-center">
                       <span className="bg-black/80 text-white/60 text-[8px] px-2 py-1 rounded-full border border-white/10 backdrop-blur-md whitespace-nowrap">
-                        {new Date(edge.source.memory.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        {new Date(edge.source.memory._creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
                   </foreignObject>
@@ -409,10 +408,10 @@ export const MemoryBoard: React.FC = () => {
           </svg>
 
           {nodes.map((node) => (
-            <MemoryCard 
-              key={node.id} 
-              node={node} 
-              parentX={springX} 
+            <MemoryCard
+              key={node.id}
+              node={node}
+              parentX={springX}
               parentY={springY}
               onClick={() => setSelectedMemory(node.memory)}
             />
@@ -428,7 +427,7 @@ export const MemoryBoard: React.FC = () => {
       <AnimatePresence>
         {(selectedMemory || isAdding) && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-12">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -439,7 +438,7 @@ export const MemoryBoard: React.FC = () => {
                 setIsEditing(false);
               }}
             />
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -450,41 +449,41 @@ export const MemoryBoard: React.FC = () => {
                 {isEditing || isAdding ? (
                   <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none">
                     {/* Live Preview of the card */}
-                    <div 
-                      style={{ 
-                        width: formData.card_width || 220, 
-                        height: formData.card_height || 280,
-                        backgroundColor: formData.bg_color || '#f8f8f8',
-                        color: formData.text_color || '#000000',
-                        fontFamily: formData.font_family || "'Caveat', cursive",
-                        borderStyle: formData.border_style || 'none',
-                        borderWidth: `${formData.border_width || 0}px`,
-                        borderColor: formData.border_color || '#000000',
-                        backgroundImage: formData.bg_image_overlay ? `url(${formData.bg_image_overlay})` : 'none',
+                    <div
+                      style={{
+                        width: formData.cardWidth || 220,
+                        height: formData.cardHeight || 280,
+                        backgroundColor: formData.bgColor || '#f8f8f8',
+                        color: formData.textColor || '#000000',
+                        fontFamily: formData.fontFamily || "'Caveat', cursive",
+                        borderStyle: formData.borderStyle || 'none',
+                        borderWidth: `${formData.borderWidth || 0}px`,
+                        borderColor: formData.borderColor || '#000000',
+                        backgroundImage: formData.bgImageOverlay ? `url(${formData.bgImageOverlay})` : 'none',
                         backgroundSize: 'cover',
                         backgroundPosition: 'center',
-                        backgroundBlendMode: formData.bg_image_overlay ? 'overlay' : 'normal'
+                        backgroundBlendMode: formData.bgImageOverlay ? 'overlay' : 'normal'
                       }}
-                      className={`p-3 pb-12 rounded-sm ${SHADOW_MAP[formData.shadow_effect || 'xl'] || 'shadow-xl'} flex flex-col relative`}
+                      className={`p-3 pb-12 rounded-sm ${SHADOW_MAP[formData.shadowEffect || 'xl'] || 'shadow-xl'} flex flex-col relative`}
                     >
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-red-500 shadow-md border border-red-700 z-10">
                         <div className="absolute inset-1 rounded-full bg-white/30" />
                       </div>
                       <div className="flex-1 w-full bg-black/10 overflow-hidden relative">
-                        {formData.image_url && (
-                          <img src={formData.image_url} alt="Preview" className="w-full h-full object-cover" />
+                        {formData.imageUrl && (
+                          <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
                         )}
                       </div>
                       <div className="absolute bottom-0 left-0 right-0 h-12 flex items-center justify-center px-4">
-                        <p className="truncate w-full text-center" style={{ fontSize: `${formData.text_size || 14}px` }}>
+                        <p className="truncate w-full text-center" style={{ fontSize: `${formData.textSize || 14}px` }}>
                           {formData.title || 'Memory Title'}
                         </p>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <img 
-                    src={selectedMemory?.image_url} 
+                  <img
+                    src={selectedMemory?.imageUrl}
                     alt={selectedMemory?.title}
                     className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
                     referrerPolicy="no-referrer"
@@ -514,7 +513,7 @@ export const MemoryBoard: React.FC = () => {
                     <>
                       {renderForm()}
                       <div className="pt-6 mt-auto">
-                        <button 
+                        <button
                           onClick={saveMemory}
                           className="w-full py-4 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-colors flex items-center justify-center gap-2"
                         >
@@ -531,7 +530,7 @@ export const MemoryBoard: React.FC = () => {
                       </div>
                       <div className="pt-8 border-t border-white/10 mt-8">
                         <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Connected Date</p>
-                        <p className="text-sm font-mono text-white/80">{selectedMemory && new Date(selectedMemory.timestamp).toLocaleString()}</p>
+                        <p className="text-sm font-mono text-white/80">{selectedMemory && new Date(selectedMemory._creationTime).toLocaleString()}</p>
                       </div>
                     </div>
                   )}
@@ -553,17 +552,17 @@ interface MemoryCardProps {
 }
 
 const MemoryCard: React.FC<MemoryCardProps> = ({ node, parentX, parentY, onClick }) => {
-  const w = node.memory.card_width || 220;
-  const h = node.memory.card_height || 280;
-  const textSize = node.memory.text_size || 14;
-  const fontFamily = node.memory.font_family || "'Caveat', cursive";
-  const textColor = node.memory.text_color || '#000000';
-  const bgColor = node.memory.bg_color || '#f8f8f8';
-  const borderStyle = node.memory.border_style || 'none';
-  const borderWidth = node.memory.border_width || 0;
-  const borderColor = node.memory.border_color || '#000000';
-  const shadowEffect = node.memory.shadow_effect || 'xl';
-  const bgImageOverlay = node.memory.bg_image_overlay || '';
+  const w = node.memory.cardWidth || 220;
+  const h = node.memory.cardHeight || 280;
+  const textSize = node.memory.textSize || 14;
+  const fontFamily = node.memory.fontFamily || "'Caveat', cursive";
+  const textColor = node.memory.textColor || '#000000';
+  const bgColor = node.memory.bgColor || '#f8f8f8';
+  const borderStyle = node.memory.borderStyle || 'none';
+  const borderWidth = node.memory.borderWidth || 0;
+  const borderColor = node.memory.borderColor || '#000000';
+  const shadowEffect = node.memory.shadowEffect || 'xl';
+  const bgImageOverlay = node.memory.bgImageOverlay || '';
 
   const distance = useTransform(() => {
     const currentX = node.x + parentX.get() + w / 2;
@@ -592,9 +591,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ node, parentX, parentY, onClick
       }}
       className="group cursor-pointer"
     >
-      <div 
+      <div
         className={`w-full h-full p-3 pb-12 rounded-sm ${SHADOW_MAP[shadowEffect] || 'shadow-xl'} flex flex-col transition-transform duration-300 group-hover:scale-105 group-hover:z-50 relative`}
-        style={{ 
+        style={{
           backgroundColor: bgColor,
           borderStyle: borderStyle,
           borderWidth: `${borderWidth}px`,
@@ -608,22 +607,22 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ node, parentX, parentY, onClick
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-red-500 shadow-md border border-red-700 z-10">
           <div className="absolute inset-1 rounded-full bg-white/30" />
         </div>
-        
+
         <div className="flex-1 w-full bg-black/5 overflow-hidden relative">
           <img
-            src={node.memory.image_url}
+            src={node.memory.imageUrl}
             alt={node.memory.title}
             className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
             referrerPolicy="no-referrer"
           />
           <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
         </div>
-        
+
         <div className="absolute bottom-0 left-0 right-0 h-12 flex items-center justify-center px-4">
-          <p 
-            className="truncate w-full text-center" 
-            style={{ 
-              fontFamily, 
+          <p
+            className="truncate w-full text-center"
+            style={{
+              fontFamily,
               color: textColor,
               fontSize: `${textSize}px`
             }}
@@ -635,4 +634,3 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ node, parentX, parentY, onClick
     </motion.div>
   );
 };
-

@@ -1,23 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { Capsule } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lock, Unlock, Mail, Image as ImageIcon, Mic, Video, X, Plus } from 'lucide-react';
 
+const CAPSULE_TYPES = ['letter', 'photos', 'voice', 'video'] as const;
+
 export const CapsulesView: React.FC = () => {
-  const [capsules, setCapsules] = useState<Capsule[]>([]);
+  const capsules = useQuery(api.capsules.list) ?? [];
+  const createCapsule = useMutation(api.capsules.create);
+
   const [selectedCapsule, setSelectedCapsule] = useState<Capsule | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [newType, setNewType] = useState('letter');
+  const [newType, setNewType] = useState<typeof CAPSULE_TYPES[number]>('letter');
   const [newDate, setNewDate] = useState('');
-
-  const fetchCapsules = () => {
-    fetch('/api/capsules').then(res => res.json()).then(setCapsules);
-  };
-
-  useEffect(() => {
-    fetchCapsules();
-  }, []);
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -31,21 +29,16 @@ export const CapsulesView: React.FC = () => {
 
   const addCapsule = async () => {
     if (!newTitle || !newDate) return;
-    
-    await fetch('/api/capsules', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: newTitle,
-        type: newType,
-        unlock_date: newDate,
-      })
+
+    await createCapsule({
+      title: newTitle,
+      type: newType,
+      unlockDate: newDate,
     });
-    
+
     setIsAdding(false);
     setNewTitle('');
     setNewDate('');
-    fetchCapsules();
   };
 
   return (
@@ -65,12 +58,12 @@ export const CapsulesView: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {capsules.map((capsule, i) => {
-          const unlockDate = new Date(capsule.unlock_date);
+          const unlockDate = new Date(capsule.unlockDate);
           const isLocked = unlockDate > new Date();
-          
+
           return (
-            <motion.div 
-              key={capsule.id}
+            <motion.div
+              key={capsule._id}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: i * 0.1 }}
@@ -182,9 +175,9 @@ export const CapsulesView: React.FC = () => {
                   className="nothing-input w-full"
                 />
                 <div className="grid grid-cols-2 gap-4">
-                  <select 
+                  <select
                     value={newType}
-                    onChange={e => setNewType(e.target.value)}
+                    onChange={e => setNewType(e.target.value as typeof CAPSULE_TYPES[number])}
                     className="nothing-input w-full appearance-none bg-black/50"
                   >
                     <option value="letter">Letter</option>

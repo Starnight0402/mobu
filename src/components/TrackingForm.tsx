@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
+import { useMutation, useQuery } from 'convex/react';
 import { motion } from 'motion/react';
 import { Wallet, Smile, Activity, Coffee, Heart, Send } from 'lucide-react';
+import { api } from '../../convex/_generated/api';
 import { TrackingType } from '../types';
 
 export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => {
+  const currentUser = useQuery(api.users.current);
   const [type, setType] = useState<TrackingType>('money');
   const [value, setValue] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [splitRatio, setSplitRatio] = useState('50'); // Default 50%
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
-  const [user, setUser] = useState('Partner 1');
   const [loading, setLoading] = useState(false);
+  const addTracking = useMutation(api.tracking.add);
 
   const types = [
     { id: 'money', icon: Wallet, label: 'Money' },
@@ -51,18 +54,11 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
     e.preventDefault();
     setLoading(true);
     try {
-      const payload = {
+      await addTracking({
         type,
         value: type === 'mood' ? parseFloat(value) : (type === 'money' ? parseFloat(value) : 1),
         category: type === 'activity' ? category : (type === 'food' ? 'Meal' : (type === 'health' ? 'Status' : category)),
         note: type === 'money' ? `Total: ${totalAmount}, Split: ${splitRatio}% | ${note}` : note,
-        user
-      };
-
-      await fetch('/api/tracking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
       });
       setValue('');
       setTotalAmount('');
@@ -105,26 +101,9 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
 
       <form onSubmit={handleSubmit} className="glass p-6 space-y-6">
         <div className="space-y-6">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setUser('Partner 1')}
-              className={`flex-1 py-3 rounded-2xl text-[8px] uppercase tracking-[0.2em] border transition-all ${
-                user === 'Partner 1' ? 'bg-white text-black border-white' : 'border-white/10 text-white/40'
-              }`}
-            >
-              Partner 1
-            </button>
-            <button
-              type="button"
-              onClick={() => setUser('Partner 2')}
-              className={`flex-1 py-3 rounded-2xl text-[8px] uppercase tracking-[0.2em] border transition-all ${
-                user === 'Partner 2' ? 'bg-white text-black border-white' : 'border-white/10 text-white/40'
-              }`}
-            >
-              Partner 2
-            </button>
-          </div>
+          <p className="text-[8px] uppercase tracking-[0.2em] text-white/20 text-center">
+            Logging as <span className="text-nothing-purple">{currentUser?.name}</span>
+          </p>
 
           {/* Dynamic Inputs based on Type */}
           {type === 'money' && (

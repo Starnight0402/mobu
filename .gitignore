@@ -9,3 +9,4 @@ coverage/
 *.db
 *.db-journal
 .convex/
+convex/_generated/

@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Memory } from '../types';
+import React from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { motion } from 'motion/react';
 import { Star, Plane, Utensils, Image as ImageIcon, Calendar } from 'lucide-react';
+import { Memory } from '../types';
 
 export const TimelineView: React.FC = () => {
-  const [memories, setMemories] = useState<Memory[]>([]);
-
-  useEffect(() => {
-    fetch('/api/memories').then(res => res.json()).then(setMemories);
-  }, []);
+  const memories = useQuery(api.memories.list) ?? [];
 
   const getIcon = (category: string) => {
     switch (category) {
@@ -21,7 +19,7 @@ export const TimelineView: React.FC = () => {
   };
 
   const groupedByYear = memories.reduce((acc, memory) => {
-    const year = new Date(memory.timestamp).getFullYear();
+    const year = new Date(memory._creationTime).getFullYear();
     if (!acc[year]) acc[year] = [];
     acc[year].push(memory);
     return acc;
@@ -46,8 +44,8 @@ export const TimelineView: React.FC = () => {
             
             <div className="space-y-12">
               {groupedByYear[parseInt(year)].map((memory, i) => (
-                <motion.div 
-                  key={memory.id}
+                <motion.div
+                  key={memory._id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.1 }}
@@ -64,18 +62,18 @@ export const TimelineView: React.FC = () => {
                       <div>
                         <h3 className="text-lg font-medium">{memory.title}</h3>
                         <p className="text-[10px] uppercase tracking-widest text-white/40 mt-1">
-                          {new Date(memory.timestamp).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
+                          {new Date(memory._creationTime).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
                         </p>
                       </div>
                       {memory.location && (
                         <span className="text-[10px] font-mono text-white/20">{memory.location}</span>
                       )}
                     </div>
-                    {memory.image_url && (
+                    {memory.imageUrl && (
                       <div className="aspect-video rounded-xl overflow-hidden">
-                        <img 
-                          src={memory.image_url} 
-                          alt={memory.title} 
+                        <img
+                          src={memory.imageUrl}
+                          alt={memory.title}
                           className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700"
                           referrerPolicy="no-referrer"
                         />

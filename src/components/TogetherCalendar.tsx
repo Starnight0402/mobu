@@ -19,7 +19,7 @@ export const TogetherCalendar: React.FC<TogetherCalendarProps> = ({ entries, siz
   // Determine which days had activity
   const togetherDays = new Set<number>();
   entries.forEach(entry => {
-    const d = new Date(entry.timestamp);
+    const d = new Date(entry._creationTime);
     if (d.getFullYear() === year && d.getMonth() === month) {
       togetherDays.add(d.getDate());
     }

@@ -1,23 +1,26 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation } from 'convex/react';
+import { useAuthActions } from '@convex-dev/auth/react';
 import { motion } from 'motion/react';
-import { Globe, DollarSign, Save } from 'lucide-react';
+import { Globe, DollarSign, Save, LogOut, User } from 'lucide-react';
+import { api } from '../../convex/_generated/api';
 import { AppSettings } from '../types';
 
 export const SettingsView: React.FC = () => {
+  const remoteSettings = useQuery(api.settings.get);
+  const saveSettings = useMutation(api.settings.save);
+  const currentUser = useQuery(api.users.current);
+  const { signOut } = useAuthActions();
   const [settings, setSettings] = useState<AppSettings>({ currency: 'USD', timezone: 'UTC' });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch('/api/settings').then(res => res.json()).then(setSettings);
-  }, []);
+    if (remoteSettings) setSettings(remoteSettings);
+  }, [remoteSettings]);
 
   const handleSave = async () => {
     setLoading(true);
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings)
-    });
+    await saveSettings(settings);
     setLoading(false);
   };
 
@@ -29,6 +32,24 @@ export const SettingsView: React.FC = () => {
       </header>
 
       <div className="glass p-8 space-y-8">
+        <div className="flex items-center justify-between pb-6 border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-nothing-purple/10 border border-nothing-purple/20 flex items-center justify-center">
+              <User size={16} className="text-nothing-purple" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">{currentUser?.name}</p>
+              <p className="text-[10px] text-white/40">{currentUser?.email}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => signOut()}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors"
+            title="Sign out"
+          >
+            <LogOut size={14} />
+          </button>
+        </div>
         <div className="space-y-6">
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/20 ml-2">

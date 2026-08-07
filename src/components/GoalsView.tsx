@@ -1,22 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Goal } from '../types';
+import React, { useState } from 'react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { motion, AnimatePresence } from 'motion/react';
 import { Utensils, Plane, Dumbbell, Coffee, Compass, Star, Plus, X, Check } from 'lucide-react';
 
+const CATEGORIES = ['adventure', 'cooking', 'fitness', 'travel', 'relaxation'] as const;
+
 export const GoalsView: React.FC = () => {
-  const [goals, setGoals] = useState<Goal[]>([]);
+  const goals = useQuery(api.goals.list) ?? [];
+  const createGoal = useMutation(api.goals.create);
+  const updateProgress = useMutation(api.goals.updateProgress);
+
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [newCategory, setNewCategory] = useState('adventure');
+  const [newCategory, setNewCategory] = useState<typeof CATEGORIES[number]>('adventure');
   const [newTarget, setNewTarget] = useState('5');
-
-  const fetchGoals = () => {
-    fetch('/api/goals').then(res => res.json()).then(setGoals);
-  };
-
-  useEffect(() => {
-    fetchGoals();
-  }, []);
 
   const getIcon = (category: string) => {
     switch (category) {
@@ -29,37 +27,24 @@ export const GoalsView: React.FC = () => {
     }
   };
 
-  const incrementGoal = async (goal: Goal) => {
+  const incrementGoal = async (goal: (typeof goals)[number]) => {
     if (goal.current >= goal.target) return;
-    
-    // Optimistic update
-    setGoals(goals.map(g => g.id === goal.id ? { ...g, current: g.current + 1 } : g));
-    
-    await fetch(`/api/goals/${goal.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ current: goal.current + 1 })
-    });
+    await updateProgress({ id: goal._id, current: goal.current + 1 });
   };
 
   const addGoal = async () => {
     if (!newTitle || !newTarget) return;
-    
-    await fetch('/api/goals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: newTitle,
-        category: newCategory,
-        target: parseInt(newTarget, 10),
-        current: 0
-      })
+
+    await createGoal({
+      title: newTitle,
+      category: newCategory,
+      target: parseInt(newTarget, 10),
+      current: 0,
     });
-    
+
     setIsAdding(false);
     setNewTitle('');
     setNewTarget('5');
-    fetchGoals();
   };
 
   return (
@@ -79,8 +64,8 @@ export const GoalsView: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {goals.map((goal, i) => (
-          <motion.div 
-            key={goal.id}
+          <motion.div
+            key={goal._id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
@@ -174,9 +159,9 @@ export const GoalsView: React.FC = () => {
                   className="nothing-input w-full"
                 />
                 <div className="grid grid-cols-2 gap-4">
-                  <select 
+                  <select
                     value={newCategory}
-                    onChange={e => setNewCategory(e.target.value)}
+                    onChange={e => setNewCategory(e.target.value as typeof CATEGORIES[number])}
                     className="nothing-input w-full appearance-none bg-black/50"
                   >
                     <option value="adventure">Adventure</option>
