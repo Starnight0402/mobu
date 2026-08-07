@@ -1,15 +1,16 @@
 import React from 'react';
-import { 
-  Home, 
-  Plus, 
-  Image as ImageIcon, 
-  BarChart2, 
-  Settings, 
-  Clock, 
-  Target, 
-  Lock, 
+import {
+  Home,
+  Plus,
+  Image as ImageIcon,
+  BarChart2,
+  Settings,
+  Clock,
+  Target,
+  Lock,
   Sparkles,
-  Map as MapIcon
+  Map as MapIcon,
+  MessageCircle,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -21,6 +22,7 @@ interface NavigationProps {
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
   const tabs = [
     { id: 'home', icon: Home, label: 'Home' },
+    { id: 'chat', icon: MessageCircle, label: 'Chat' },
     { id: 'memories', icon: ImageIcon, label: 'Board' },
     { id: 'timeline', icon: Clock, label: 'Timeline' },
     { id: 'map', icon: MapIcon, label: 'Map' },

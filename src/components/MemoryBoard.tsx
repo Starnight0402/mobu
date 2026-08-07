@@ -3,6 +3,7 @@ import { useQuery, useMutation } from 'convex/react';
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Memory, Id } from '../types';
+import { compressImage } from '../lib/image';
 import { Plus, Maximize2, X, Edit2, Trash2, Upload, Save, Waypoints, LayoutGrid, MapPin, Loader2 } from 'lucide-react';
 
 // Deterministic hash so a memory's position in the web is stable across
@@ -17,45 +18,6 @@ function hashSeed(input: string): number {
 }
 
 const CATEGORIES: Memory['category'][] = ['photo', 'travel', 'food', 'milestone', 'event'];
-
-async function compressImage(file: File): Promise<Blob> {
-  const dataUrl: string = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
-  const img = new Image();
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = reject;
-    img.src = dataUrl;
-  });
-
-  const maxDim = 1600;
-  let { width, height } = img;
-  if (width > maxDim || height > maxDim) {
-    if (width > height) {
-      height = Math.round(height * (maxDim / width));
-      width = maxDim;
-    } else {
-      width = Math.round(width * (maxDim / height));
-      height = maxDim;
-    }
-  }
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas not supported');
-  ctx.drawImage(img, 0, 0, width, height);
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Compression failed'))), 'image/jpeg', 0.85);
-  });
-}
 
 interface Node {
   id: string;

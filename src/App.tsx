@@ -11,6 +11,7 @@ import { GoalsView } from './components/GoalsView';
 import { CapsulesView } from './components/CapsulesView';
 import { InsightsView } from './components/InsightsView';
 import { MapView } from './components/MapView';
+import { ChatView } from './components/ChatView';
 import { SignInScreen } from './components/SignInScreen';
 import { NameSetup } from './components/NameSetup';
 import { motion, AnimatePresence } from 'motion/react';
@@ -56,6 +57,8 @@ function AuthenticatedApp() {
         return <Dashboard key="home" />;
       case 'track':
         return <TrackingForm key="track" onSuccess={() => setActiveTab('home')} />;
+      case 'chat':
+        return <ChatView key="chat" />;
       case 'memories':
         return <MemoryBoard key="memories" />;
       case 'timeline':
