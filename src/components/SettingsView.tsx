@@ -2,20 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { motion } from 'motion/react';
-import { Globe, DollarSign, Save, LogOut, User } from 'lucide-react';
+import { Globe, DollarSign, Save, LogOut, User, Moon, Sun } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { AppSettings } from '../types';
+import { useTheme } from '../hooks/useTheme';
 
 export const SettingsView: React.FC = () => {
   const remoteSettings = useQuery(api.settings.get);
   const saveSettings = useMutation(api.settings.save);
   const currentUser = useQuery(api.users.current);
   const { signOut } = useAuthActions();
-  const [settings, setSettings] = useState<AppSettings>({ currency: 'USD', timezone: 'UTC' });
+  const { theme, toggleTheme } = useTheme();
+  const [settings, setSettings] = useState<Omit<AppSettings, 'theme'>>({ currency: 'USD', timezone: 'UTC' });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (remoteSettings) setSettings(remoteSettings);
+    if (remoteSettings) setSettings({ currency: remoteSettings.currency, timezone: remoteSettings.timezone });
   }, [remoteSettings]);
 
   const handleSave = async () => {
@@ -50,6 +52,28 @@ export const SettingsView: React.FC = () => {
             <LogOut size={14} />
           </button>
         </div>
+
+        <div className="flex items-center justify-between pb-6 border-b border-white/5">
+          <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/20">
+            {theme === 'dark' ? <Moon size={12} /> : <Sun size={12} />} Appearance
+          </label>
+          <button
+            onClick={toggleTheme}
+            className={`relative w-14 h-8 rounded-full border transition-colors ${
+              theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-nothing-purple/20 border-nothing-purple/40'
+            }`}
+          >
+            <motion.div
+              layout
+              className="absolute top-1 w-6 h-6 rounded-full bg-nothing-purple flex items-center justify-center"
+              animate={{ left: theme === 'dark' ? 4 : 28 }}
+              transition={{ type: 'spring', bounce: 0.2, duration: 0.3 }}
+            >
+              {theme === 'dark' ? <Moon size={12} className="text-white" /> : <Sun size={12} className="text-white" />}
+            </motion.div>
+          </button>
+        </div>
+
         <div className="space-y-6">
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/20 ml-2">

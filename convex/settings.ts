@@ -28,9 +28,11 @@ export const get = query({
     await requireUserId(ctx);
     const currency = await getValue(ctx, "currency");
     const timezone = await getValue(ctx, "timezone");
+    const theme = await getValue(ctx, "theme");
     return {
       currency: currency ?? "USD",
       timezone: timezone ?? "UTC",
+      theme: (theme === "light" ? "light" : "dark") as "light" | "dark",
     };
   },
 });
@@ -41,5 +43,13 @@ export const save = mutation({
     await requireUserId(ctx);
     await setValue(ctx, "currency", args.currency);
     await setValue(ctx, "timezone", args.timezone);
+  },
+});
+
+export const setTheme = mutation({
+  args: { theme: v.union(v.literal("light"), v.literal("dark")) },
+  handler: async (ctx, args) => {
+    await requireUserId(ctx);
+    await setValue(ctx, "theme", args.theme);
   },
 });

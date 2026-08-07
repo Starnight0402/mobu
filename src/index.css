@@ -14,16 +14,46 @@
 @layer base {
   body {
     @apply bg-black text-white font-sans antialiased overflow-x-hidden;
-    /* Tells the browser to render native controls (select dropdowns,
-       scrollbars, date pickers) in dark mode too — without this, <option>
-       lists default to a white popup with our white text, making unselected
-       options invisible. Phase 4 (light mode) will make this theme-aware. */
+  }
+
+  /* Tells the browser to render native controls (select dropdowns,
+     scrollbars, date pickers) to match the active theme — without this,
+     <option> lists default to a white popup regardless of theme, making
+     unselected options invisible against our own white text in dark mode. */
+  html[data-theme='dark'] {
     color-scheme: dark;
+  }
+  html[data-theme='light'] {
+    color-scheme: light;
   }
 
   select option {
-    background-color: #0a0a0a;
-    color: #ffffff;
+    background-color: var(--select-option-bg, #0a0a0a);
+    color: var(--select-option-fg, #ffffff);
+  }
+  html[data-theme='light'] select option {
+    --select-option-bg: #ffffff;
+    --select-option-fg: #0a0a0a;
+  }
+
+  /*
+   * Light mode: the entire app is built with hardcoded dark-theme utilities
+   * (bg-black, text-white/40, etc.) rather than semantic tokens, so a 1:1
+   * palette rewrite would touch hundreds of call sites across every
+   * component. Instead we flip the whole rendered app with a CSS filter —
+   * the same technique tools like Dark Reader use to retheme arbitrary
+   * pages. Colors are approximated by the invert+hue-rotate math rather
+   * than hand-tuned, but it's a real, fully functional light theme.
+   * Photos/videos are counter-inverted so they don't render as negatives.
+   */
+  html[data-theme='light'] #root {
+    filter: invert(1) hue-rotate(180deg);
+    background: #fff;
+    min-height: 100vh;
+  }
+  html[data-theme='light'] #root img,
+  html[data-theme='light'] #root video {
+    filter: invert(1) hue-rotate(180deg);
   }
 }
 

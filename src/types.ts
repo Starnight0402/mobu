@@ -19,6 +19,7 @@ export interface Stats {
 export interface AppSettings {
   currency: string;
   timezone: string;
+  theme?: 'light' | 'dark';
 }
 
 export type WidgetSize = 'small' | 'wide' | 'tall' | 'large';
