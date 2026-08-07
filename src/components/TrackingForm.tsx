@@ -7,6 +7,7 @@ import { TrackingType } from '../types';
 
 export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => {
   const currentUser = useQuery(api.users.current);
+  const settings = useQuery(api.settings.get);
   const [type, setType] = useState<TrackingType>('money');
   const [value, setValue] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
@@ -15,6 +16,7 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const addTracking = useMutation(api.tracking.add);
+  const addExpense = useMutation(api.expenses.add);
 
   const types = [
     { id: 'money', icon: Wallet, label: 'Money' },
@@ -54,12 +56,22 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
     e.preventDefault();
     setLoading(true);
     try {
-      await addTracking({
-        type,
-        value: type === 'mood' ? parseFloat(value) : (type === 'money' ? parseFloat(value) : 1),
-        category: type === 'activity' ? category : (type === 'food' ? 'Meal' : (type === 'health' ? 'Status' : category)),
-        note: type === 'money' ? `Total: ${totalAmount}, Split: ${splitRatio}% | ${note}` : note,
-      });
+      if (type === 'money') {
+        await addExpense({
+          amount: parseFloat(totalAmount),
+          splitRatio: parseFloat(splitRatio),
+          category: category || 'General',
+          currency: settings?.currency || 'USD',
+          note: note || undefined,
+        });
+      } else {
+        await addTracking({
+          type,
+          value: type === 'mood' ? parseFloat(value) : 1,
+          category: type === 'activity' ? category : (type === 'food' ? 'Meal' : (type === 'health' ? 'Status' : category)),
+          note,
+        });
+      }
       setValue('');
       setTotalAmount('');
       setCategory('');

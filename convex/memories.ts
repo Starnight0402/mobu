@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { Doc } from "./_generated/dataModel";
+import { mutation, query, QueryCtx } from "./_generated/server";
 import { requireUserId } from "./authHelpers";
 
 const categoryValidator = v.union(
@@ -14,6 +15,7 @@ const memoryFields = {
   title: v.string(),
   description: v.optional(v.string()),
   imageUrl: v.optional(v.string()),
+  imageStorageId: v.optional(v.id("_storage")),
   category: v.optional(categoryValidator),
   location: v.optional(v.string()),
   lat: v.optional(v.number()),
@@ -35,6 +37,7 @@ interface MemoryInput {
   title: string;
   description?: string;
   imageUrl?: string;
+  imageStorageId?: Doc<"memories">["imageStorageId"];
   category?: "photo" | "travel" | "food" | "milestone" | "event";
   location?: string;
   lat?: number;
@@ -69,11 +72,24 @@ function withDefaults(args: MemoryInput) {
   };
 }
 
+// Uploaded files (imageStorageId) take priority over a raw imageUrl string
+// (external link or, for anything created before Phase 5, a base64 data URL).
+async function resolveImageUrl(ctx: QueryCtx, memory: Doc<"memories">) {
+  if (memory.imageStorageId) {
+    const url = await ctx.storage.getUrl(memory.imageStorageId);
+    if (url) return url;
+  }
+  return memory.imageUrl;
+}
+
 export const list = query({
   args: {},
   handler: async (ctx) => {
     await requireUserId(ctx);
-    return await ctx.db.query("memories").order("desc").collect();
+    const memories = await ctx.db.query("memories").order("desc").collect();
+    return await Promise.all(
+      memories.map(async (m) => ({ ...m, imageUrl: await resolveImageUrl(ctx, m) })),
+    );
   },
 });
 
@@ -98,6 +114,10 @@ export const remove = mutation({
   args: { id: v.id("memories") },
   handler: async (ctx, args) => {
     await requireUserId(ctx);
+    const memory = await ctx.db.get(args.id);
+    if (memory?.imageStorageId) {
+      await ctx.storage.delete(memory.imageStorageId);
+    }
     await ctx.db.delete(args.id);
   },
 });

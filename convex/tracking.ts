@@ -35,11 +35,11 @@ export const stats = query({
   handler: async (ctx) => {
     await requireUserId(ctx);
     const allTracking = await ctx.db.query("tracking").collect();
-    const money = allTracking.filter((t) => t.type === "money");
     const mood = allTracking.filter((t) => t.type === "mood");
     const activities = allTracking.filter((t) => t.type === "activity");
+    const expenses = await ctx.db.query("expenses").collect();
 
-    const totalMoney = money.reduce((sum, t) => sum + t.value, 0);
+    const totalMoney = expenses.reduce((sum, e) => sum + e.amount, 0);
     const avgMood = mood.length > 0 ? mood.reduce((sum, t) => sum + t.value, 0) / mood.length : 0;
 
     const activityCounts = new Map<string, number>();

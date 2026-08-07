@@ -56,6 +56,19 @@ export default defineSchema({
     bgImageOverlay: v.optional(v.string()),
   }),
 
+  // Phase 5: dedicated expense tracking, replacing the hack where split
+  // info was string-concatenated into `tracking.note`.
+  expenses: defineTable({
+    amount: v.number(),
+    payerId: v.id("users"),
+    splitRatio: v.number(), // payer's share, 0-100
+    category: v.string(),
+    currency: v.string(),
+    note: v.optional(v.string()),
+    receiptStorageId: v.optional(v.id("_storage")),
+    settled: v.boolean(),
+  }).index("by_payer", ["payerId"]),
+
   goals: defineTable({
     title: v.string(),
     category: v.union(

@@ -1,23 +1,25 @@
 import React from 'react';
-import { useQuery } from 'convex/react';
+import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell
+  LineChart, Line, AreaChart, Area
 } from 'recharts';
 import { motion } from 'motion/react';
+import { Scale, Download, PartyPopper } from 'lucide-react';
 
 export const StatsView: React.FC = () => {
   const stats = useQuery(api.tracking.stats);
   const history = useQuery(api.tracking.list) ?? [];
+  const expenses = useQuery(api.expenses.list) ?? [];
+  const balance = useQuery(api.expenses.balance);
+  const settleAll = useMutation(api.expenses.settleAll);
   const settings = useQuery(api.settings.get) ?? { currency: 'USD', timezone: 'UTC' };
 
   const getCurrencySymbol = (code: string) => {
     const symbols: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', INR: '₹', JPY: '¥' };
     return symbols[code] || '$';
   };
-
-  const COLORS = ['#a855f7', '#ffffff', '#333333', '#666666'];
 
   const moodData = history
     .filter(h => h.type === 'mood')
@@ -28,21 +30,85 @@ export const StatsView: React.FC = () => {
       value: h.value
     }));
 
-  const moneyData = history
-    .filter(h => h.type === 'money')
-    .slice(-10)
+  const moneyData = expenses
+    .slice(0, 10)
     .reverse()
-    .map(h => ({
-      time: new Date(h._creationTime).toLocaleDateString([], { month: 'short', day: 'numeric' }),
-      amount: h.value
+    .map(e => ({
+      time: new Date(e._creationTime).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      amount: e.amount
     }));
+
+  const net = balance ? balance.theyOwe - balance.youOwe : 0;
+
+  const exportCsv = () => {
+    const rows = [
+      ['Date', 'Amount', 'Category', 'Split %', 'Currency', 'Note'],
+      ...expenses.map(e => [
+        new Date(e._creationTime).toISOString(),
+        e.amount.toString(),
+        e.category,
+        e.splitRatio.toString(),
+        e.currency,
+        e.note ?? '',
+      ]),
+    ];
+    const csv = rows.map(r => r.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'nexus-expenses.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-8 pb-32">
-      <header className="space-y-2">
-        <h1 className="text-4xl font-medium tracking-tight dot-matrix">Analytics</h1>
-        <p className="text-white/40 text-sm uppercase tracking-widest">Deep dive into your data</p>
+      <header className="flex justify-between items-end">
+        <div className="space-y-2">
+          <h1 className="text-4xl font-medium tracking-tight dot-matrix">Analytics</h1>
+          <p className="text-white/40 text-sm uppercase tracking-widest">Deep dive into your data</p>
+        </div>
+        <button
+          onClick={exportCsv}
+          className="w-10 h-10 rounded-full glass text-white/60 hover:text-white flex items-center justify-center transition-all"
+          title="Export expenses as CSV"
+        >
+          <Download size={16} />
+        </button>
       </header>
+
+      {balance && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass p-6 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-nothing-purple/10 border border-nothing-purple/20 flex items-center justify-center">
+              <Scale size={18} className="text-nothing-purple" />
+            </div>
+            <div>
+              {net === 0 ? (
+                <p className="text-sm font-medium flex items-center gap-2">All settled up <PartyPopper size={14} className="text-nothing-purple" /></p>
+              ) : net > 0 ? (
+                <p className="text-sm font-medium">{balance.partnerName} owes you {getCurrencySymbol(settings.currency)}{net.toFixed(2)}</p>
+              ) : (
+                <p className="text-sm font-medium">You owe {balance.partnerName} {getCurrencySymbol(settings.currency)}{Math.abs(net).toFixed(2)}</p>
+              )}
+              <p className="text-[10px] uppercase tracking-widest text-white/40 mt-1">Running balance</p>
+            </div>
+          </div>
+          {net !== 0 && (
+            <button
+              onClick={() => settleAll()}
+              className="px-4 py-2 rounded-full text-[10px] uppercase tracking-widest border border-white/10 text-white/60 hover:border-nothing-purple hover:text-nothing-purple transition-all"
+            >
+              Settle Up
+            </button>
+          )}
+        </motion.div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <motion.div 

@@ -1,9 +1,61 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Memory, Id } from '../types';
-import { Plus, Maximize2, X, Edit2, Trash2, Upload, Save } from 'lucide-react';
+import { Plus, Maximize2, X, Edit2, Trash2, Upload, Save, Waypoints, LayoutGrid, MapPin, Loader2 } from 'lucide-react';
+
+// Deterministic hash so a memory's position in the web is stable across
+// reloads/re-renders regardless of array order — fixes the old
+// Math.random()-per-render layout that reshuffled every node on any save.
+function hashSeed(input: string): number {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) {
+    h = (Math.imul(h, 31) + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+const CATEGORIES: Memory['category'][] = ['photo', 'travel', 'food', 'milestone', 'event'];
+
+async function compressImage(file: File): Promise<Blob> {
+  const dataUrl: string = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+
+  const maxDim = 1600;
+  let { width, height } = img;
+  if (width > maxDim || height > maxDim) {
+    if (width > height) {
+      height = Math.round(height * (maxDim / width));
+      width = maxDim;
+    } else {
+      width = Math.round(width * (maxDim / height));
+      height = maxDim;
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas not supported');
+  ctx.drawImage(img, 0, 0, width, height);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Compression failed'))), 'image/jpeg', 0.85);
+  });
+}
 
 interface Node {
   id: string;
@@ -41,10 +93,14 @@ export const MemoryBoard: React.FC = () => {
   const createMemory = useMutation(api.memories.create);
   const updateMemory = useMutation(api.memories.update);
   const removeMemory = useMutation(api.memories.remove);
+  const generateUploadUrl = useMutation(api.files.generateUploadUrl);
 
   const [isAdding, setIsAdding] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [viewMode, setViewMode] = useState<'web' | 'grid'>('web');
+  const [uploading, setUploading] = useState(false);
+  const [locating, setLocating] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState<MemoryFormState>({});
@@ -56,24 +112,66 @@ export const MemoryBoard: React.FC = () => {
   const springX = useSpring(x, { stiffness: 150, damping: 30 });
   const springY = useSpring(y, { stiffness: 150, damping: 30 });
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, imageUrl: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    setUploading(true);
+    try {
+      const blob = await compressImage(file);
+      setFormData((prev) => ({ ...prev, imageUrl: URL.createObjectURL(blob) }));
+      const uploadUrl = await generateUploadUrl();
+      const res = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type },
+        body: blob,
+      });
+      const { storageId } = await res.json();
+      setFormData((prev) => ({ ...prev, imageStorageId: storageId }));
+    } catch (err) {
+      console.error('Image upload failed', err);
+    } finally {
+      setUploading(false);
     }
+  };
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        setFormData((prev) => ({ ...prev, lat, lng }));
+        const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+        if (apiKey) {
+          try {
+            const res = await fetch(
+              `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`,
+            );
+            const data = await res.json();
+            const place = data.results?.[0]?.formatted_address;
+            if (place) setFormData((prev) => ({ ...prev, location: place }));
+          } catch (err) {
+            console.error('Reverse geocoding failed', err);
+          }
+        }
+        setLocating(false);
+      },
+      () => setLocating(false),
+    );
   };
 
   const saveMemory = async () => {
     const isNew = !formData._id;
+    // A blob: preview URL is only valid in this tab — never persist it as
+    // the stored imageUrl (imageStorageId, set once upload finishes, is
+    // what actually gets displayed once saved).
+    const isBlobPreview = formData.imageUrl?.startsWith('blob:');
 
     const payload = {
       title: formData.title || '',
       description: formData.description,
-      imageUrl: formData.imageUrl || `https://picsum.photos/seed/${Math.random()}/1200/800`,
+      imageUrl: isBlobPreview ? undefined : formData.imageUrl || `https://picsum.photos/seed/${Math.random()}/1200/800`,
+      imageStorageId: formData.imageStorageId,
       category: formData.category,
       location: formData.location,
       lat: formData.lat,
@@ -118,6 +216,8 @@ export const MemoryBoard: React.FC = () => {
       title: '',
       description: '',
       imageUrl: '',
+      category: 'photo',
+      location: '',
       cardWidth: 220,
       cardHeight: 280,
       textSize: 14,
@@ -144,13 +244,16 @@ export const MemoryBoard: React.FC = () => {
   };
 
   const { nodes, edges } = useMemo(() => {
-    const generatedNodes: Node[] = memories.map((memory, i) => {
-      const angle = i * 2.4;
-      const radius = 150 + i * 100;
-      const posX = Math.cos(angle) * radius + (Math.random() * 100 - 50);
-      const posY = Math.sin(angle) * radius + (Math.random() * 100 - 50);
-      const rotation = Math.random() * 20 - 10;
-      return { id: memory._id, x: posX, y: posY, memory, rotation };
+    const generatedNodes: Node[] = memories.map((memory) => {
+      const id = memory._id;
+      const angle = (hashSeed(id + 'a') % 6283) / 1000; // 0..2π
+      const radius = 150 + (hashSeed(id + 'r') % 800);
+      const jitterX = (hashSeed(id + 'x') % 100) - 50;
+      const jitterY = (hashSeed(id + 'y') % 100) - 50;
+      const posX = Math.cos(angle) * radius + jitterX;
+      const posY = Math.sin(angle) * radius + jitterY;
+      const rotation = (hashSeed(id + 'rot') % 20) - 10;
+      return { id, x: posX, y: posY, memory, rotation };
     });
 
     const generatedEdges: Edge[] = [];
@@ -195,8 +298,8 @@ export const MemoryBoard: React.FC = () => {
             className="flex-1 bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm"
           />
           <label className="flex items-center justify-center bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl px-4 cursor-pointer transition-colors">
-            <Upload size={18} className="text-white" />
-            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+            {uploading ? <Loader2 size={18} className="text-white animate-spin" /> : <Upload size={18} className="text-white" />}
+            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
           </label>
         </div>
         {formData.imageUrl && (
@@ -204,6 +307,45 @@ export const MemoryBoard: React.FC = () => {
             <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
           </div>
         )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Category</label>
+          <select
+            value={formData.category || 'photo'}
+            onChange={e => setFormData({...formData, category: e.target.value as Memory['category']})}
+            className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 appearance-none"
+          >
+            {CATEGORIES.map(c => <option key={c} value={c}>{c[0].toUpperCase() + c.slice(1)}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-white/60 uppercase tracking-widest mb-1 flex items-center gap-1">
+            <MapPin size={10} /> Location
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="e.g. Paris, France"
+              value={formData.location || ''}
+              onChange={e => setFormData({...formData, location: e.target.value})}
+              className="flex-1 bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm"
+            />
+            <button
+              type="button"
+              onClick={useCurrentLocation}
+              disabled={locating}
+              title="Use current location"
+              className="flex items-center justify-center bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl px-4 transition-colors disabled:opacity-50"
+            >
+              {locating ? <Loader2 size={16} className="text-white animate-spin" /> : <MapPin size={16} className="text-white" />}
+            </button>
+          </div>
+          {formData.lat != null && (
+            <p className="text-[9px] text-nothing-purple font-mono mt-1">📍 {formData.lat.toFixed(4)}, {formData.lng?.toFixed(4)}</p>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -351,18 +493,38 @@ export const MemoryBoard: React.FC = () => {
            style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
 
       <div className="absolute top-8 left-8 z-10 space-y-1 pointer-events-none">
-        <h1 className="text-2xl font-medium tracking-tight dot-matrix">Memory Web</h1>
-        <p className="text-white/40 text-[10px] uppercase tracking-widest">Pan to explore connections</p>
+        <h1 className="text-2xl font-medium tracking-tight dot-matrix">{viewMode === 'web' ? 'Memory Web' : 'Gallery'}</h1>
+        <p className="text-white/40 text-[10px] uppercase tracking-widest">
+          {viewMode === 'web' ? 'Pan to explore connections' : `${memories.length} memories`}
+        </p>
       </div>
 
       <div className="absolute top-8 right-8 z-10 flex gap-2">
-        <button
-          onClick={reCenter}
-          className="w-10 h-10 rounded-full glass text-white flex items-center justify-center hover:bg-white/10 transition-all"
-          title="Recenter"
-        >
-          <Maximize2 size={16} />
-        </button>
+        <div className="glass p-1 flex gap-1">
+          <button
+            onClick={() => setViewMode('web')}
+            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${viewMode === 'web' ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
+            title="Memory web"
+          >
+            <Waypoints size={14} />
+          </button>
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${viewMode === 'grid' ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
+            title="Grid view"
+          >
+            <LayoutGrid size={14} />
+          </button>
+        </div>
+        {viewMode === 'web' && (
+          <button
+            onClick={reCenter}
+            className="w-10 h-10 rounded-full glass text-white flex items-center justify-center hover:bg-white/10 transition-all"
+            title="Recenter"
+          >
+            <Maximize2 size={16} />
+          </button>
+        )}
         <button
           onClick={openAddModal}
           className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-all shadow-xl"
@@ -371,7 +533,43 @@ export const MemoryBoard: React.FC = () => {
         </button>
       </div>
 
-      <motion.div
+      {viewMode === 'grid' && (
+        <div className="absolute inset-0 pt-28 pb-8 px-8 overflow-y-auto">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {memories.map((memory) => (
+              <button
+                key={memory._id}
+                onClick={() => setSelectedMemory(memory)}
+                className="aspect-square rounded-2xl overflow-hidden glass border border-white/5 relative group text-left"
+              >
+                <img
+                  src={memory.imageUrl}
+                  alt={memory.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-3">
+                  <div>
+                    <p className="text-xs font-medium text-white truncate">{memory.title}</p>
+                    {memory.location && (
+                      <p className="text-[9px] text-white/60 flex items-center gap-1 mt-0.5">
+                        <MapPin size={9} /> {memory.location}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+          {memories.length === 0 && (
+            <div className="h-full flex items-center justify-center text-white/20 text-xs uppercase tracking-widest">
+              No memories yet
+            </div>
+          )}
+        </div>
+      )}
+
+      {viewMode === 'web' && <motion.div
         drag
         dragConstraints={{ left: -3000, right: 3000, top: -3000, bottom: 3000 }}
         style={{ x: springX, y: springY }}
@@ -417,11 +615,13 @@ export const MemoryBoard: React.FC = () => {
             />
           ))}
         </div>
-      </motion.div>
+      </motion.div>}
 
-      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-        <div className="w-2 h-2 bg-white/20 rounded-full" />
-      </div>
+      {viewMode === 'web' && (
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+          <div className="w-2 h-2 bg-white/20 rounded-full" />
+        </div>
+      )}
 
       {/* Detail / Edit Modal */}
       <AnimatePresence>
