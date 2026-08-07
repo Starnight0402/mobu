@@ -14,6 +14,7 @@ import {
   Lock,
   ChevronRight,
   Maximize2,
+  Flame,
 } from 'lucide-react';
 
 const DEFAULT_WIDGETS: WidgetConfig[] = [
@@ -33,6 +34,8 @@ export const Dashboard: React.FC = () => {
   const memories = useQuery(api.memories.list) ?? [];
   const insights = useQuery(api.insights.list) ?? [];
   const capsules = useQuery(api.capsules.list) ?? [];
+  const streak = useQuery(api.tracking.streak);
+  const onThisDay = useQuery(api.memories.onThisDay) ?? [];
   const settings = useQuery(api.settings.get) ?? { currency: 'USD', timezone: 'UTC' };
   const widgetsDoc = useQuery(api.widgets.list);
   const saveWidgets = useMutation(api.widgets.saveAll);
@@ -130,7 +133,7 @@ export const Dashboard: React.FC = () => {
             {editOverlay}
             <div className="flex items-center gap-2 mb-4">
               <Sparkles className="text-nothing-purple" size={18} />
-              <h3 className="text-[10px] uppercase tracking-widest font-medium">AI Insight</h3>
+              <h3 className="text-[10px] uppercase tracking-widest font-medium">Insight</h3>
             </div>
             {insights.length > 0 ? (
               <div className="space-y-2">
@@ -214,15 +217,43 @@ export const Dashboard: React.FC = () => {
           <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">Nexus</h1>
           <p className="text-white/40 text-[10px] uppercase tracking-widest">Intelligence Hub</p>
         </div>
-        <button
-          onClick={() => setIsEditing(!isEditing)}
-          className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-widest border transition-all ${
-            isEditing ? 'bg-nothing-purple border-nothing-purple text-white' : 'border-white/10 text-white/40 hover:border-white/20'
-          }`}
-        >
-          {isEditing ? 'Done' : 'Edit Layout'}
-        </button>
+        <div className="flex items-center gap-2">
+          {!!streak?.days && (
+            <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400" title="Consecutive days you've both logged something">
+              <Flame size={12} />
+              <span className="text-[10px] font-mono">{streak.days}</span>
+            </div>
+          )}
+          <button
+            onClick={() => setIsEditing(!isEditing)}
+            className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-widest border transition-all ${
+              isEditing ? 'bg-nothing-purple border-nothing-purple text-white' : 'border-white/10 text-white/40 hover:border-white/20'
+            }`}
+          >
+            {isEditing ? 'Done' : 'Edit Layout'}
+          </button>
+        </div>
       </header>
+
+      {onThisDay.length > 0 && (
+        <section className="glass p-6 space-y-4 bg-nothing-purple/5 border-nothing-purple/20">
+          <div className="flex items-center gap-2">
+            <Sparkles size={14} className="text-nothing-purple" />
+            <h2 className="text-[10px] uppercase tracking-[0.2em] text-white/60">On This Day</h2>
+          </div>
+          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
+            {onThisDay.map((m) => (
+              <div key={m._id} className="flex-shrink-0 w-40 space-y-2">
+                <div className="aspect-square rounded-xl overflow-hidden">
+                  <img src={m.imageUrl} alt={m.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <p className="text-xs font-medium truncate">{m.title}</p>
+                <p className="text-[9px] text-white/40">{new Date(m._creationTime).getFullYear()}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Tetris Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 grid-flow-dense">

@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { motion, AnimatePresence } from 'motion/react';
-import { Utensils, Plane, Dumbbell, Coffee, Compass, Star, Plus, X, Check } from 'lucide-react';
+import { Utensils, Plane, Dumbbell, Coffee, Compass, Star, Plus, X, Check, Dices } from 'lucide-react';
+import { Goal } from '../types';
 
 const CATEGORIES = ['adventure', 'cooking', 'fitness', 'travel', 'relaxation'] as const;
 
@@ -15,6 +16,24 @@ export const GoalsView: React.FC = () => {
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState<typeof CATEGORIES[number]>('adventure');
   const [newTarget, setNewTarget] = useState('5');
+  const [rouletteGoal, setRouletteGoal] = useState<Goal | null>(null);
+  const [spinning, setSpinning] = useState(false);
+
+  const spinRoulette = () => {
+    const options = goals.filter((g) => g.current < g.target);
+    if (options.length === 0) return;
+    setSpinning(true);
+    setRouletteGoal(null);
+    let ticks = 0;
+    const interval = setInterval(() => {
+      setRouletteGoal(options[Math.floor(Math.random() * options.length)]);
+      ticks++;
+      if (ticks > 12) {
+        clearInterval(interval);
+        setSpinning(false);
+      }
+    }, 100);
+  };
 
   const getIcon = (category: string) => {
     switch (category) {
@@ -54,12 +73,22 @@ export const GoalsView: React.FC = () => {
           <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">Shared Goals</h1>
           <p className="text-white/40 text-sm uppercase tracking-widest">Growing together</p>
         </div>
-        <button 
-          onClick={() => setIsAdding(true)}
-          className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-all shadow-xl"
-        >
-          <Plus size={20} />
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={spinRoulette}
+            disabled={goals.filter((g) => g.current < g.target).length === 0}
+            title="Pick a random date idea"
+            className="w-10 h-10 rounded-full glass text-white flex items-center justify-center hover:bg-white/10 transition-all disabled:opacity-30"
+          >
+            <Dices size={18} />
+          </button>
+          <button
+            onClick={() => setIsAdding(true)}
+            className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-all shadow-xl"
+          >
+            <Plus size={20} />
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -186,6 +215,59 @@ export const GoalsView: React.FC = () => {
                   Create Goal
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Date Idea Roulette */}
+      <AnimatePresence>
+        {rouletteGoal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+              onClick={() => !spinning && setRouletteGoal(null)}
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative glass p-10 w-full max-w-sm space-y-6 text-center"
+            >
+              <p className="text-[10px] uppercase tracking-widest text-white/40">
+                {spinning ? 'Picking something for you…' : "Tonight's idea"}
+              </p>
+              <motion.div
+                key={rouletteGoal._id + (spinning ? Math.random() : '')}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="space-y-3"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-nothing-purple/10 border border-nothing-purple/20 flex items-center justify-center mx-auto text-nothing-purple">
+                  {getIcon(rouletteGoal.category)}
+                </div>
+                <h3 className="text-2xl font-medium tracking-tight">{rouletteGoal.title}</h3>
+                <p className="text-[10px] uppercase tracking-widest text-white/40">{rouletteGoal.category}</p>
+              </motion.div>
+              {!spinning && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={spinRoulette}
+                    className="flex-1 py-3 rounded-2xl text-[10px] uppercase tracking-widest border border-white/10 text-white/60 hover:border-white/30 transition-all"
+                  >
+                    Spin Again
+                  </button>
+                  <button
+                    onClick={() => setRouletteGoal(null)}
+                    className="flex-1 py-3 rounded-2xl text-[10px] uppercase tracking-widest bg-nothing-purple text-white"
+                  >
+                    Let's Do It
+                  </button>
+                </div>
+              )}
             </motion.div>
           </div>
         )}

@@ -96,12 +96,6 @@ export default defineSchema({
     contentText: v.optional(v.string()),
   }),
 
-  insights: defineTable({
-    title: v.string(),
-    content: v.string(),
-    type: v.union(v.literal("pattern"), v.literal("trend"), v.literal("suggestion")),
-  }),
-
   widgets: defineTable({
     widgetId: v.string(),
     size: v.union(v.literal("small"), v.literal("wide"), v.literal("tall"), v.literal("large")),

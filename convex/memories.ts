@@ -93,6 +93,26 @@ export const list = query({
   },
 });
 
+// Memories from this same month/day in a previous year -- surfaced on the
+// Dashboard as a little "remember this?" callback.
+export const onThisDay = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireUserId(ctx);
+    const today = new Date();
+    const memories = await ctx.db.query("memories").collect();
+    const matches = memories.filter((m) => {
+      const d = new Date(m._creationTime);
+      return (
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate() &&
+        d.getFullYear() < today.getFullYear()
+      );
+    });
+    return await Promise.all(matches.map(async (m) => ({ ...m, imageUrl: await resolveImageUrl(ctx, m) })));
+  },
+});
+
 export const create = mutation({
   args: memoryFields,
   handler: async (ctx, args) => {

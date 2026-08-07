@@ -19,14 +19,14 @@ export const InsightsView: React.FC = () => {
   return (
     <div className="space-y-12 pb-32">
       <header className="space-y-2">
-        <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">AI Insights</h1>
-        <p className="text-white/40 text-sm uppercase tracking-widest">Relationship Intelligence</p>
+        <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">Insights</h1>
+        <p className="text-white/40 text-sm uppercase tracking-widest">Patterns in your own data</p>
       </header>
 
       <div className="space-y-6">
         {insights.map((insight, i) => (
           <motion.div
-            key={insight._id}
+            key={insight.id}
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.1 }}
@@ -35,14 +35,9 @@ export const InsightsView: React.FC = () => {
             <div className="p-4 rounded-2xl bg-nothing-purple/10 text-nothing-purple group-hover:scale-110 transition-transform">
               {getIcon(insight.type)}
             </div>
-            
+
             <div className="space-y-3 flex-1">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xl font-medium tracking-tight">{insight.title}</h3>
-                <span className="text-[10px] font-mono text-white/20">
-                  {new Date(insight._creationTime).toLocaleDateString()}
-                </span>
-              </div>
+              <h3 className="text-xl font-medium tracking-tight">{insight.title}</h3>
               <p className="text-white/60 leading-relaxed">{insight.content}</p>
               <div className="pt-4 flex gap-4">
                 <span className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full bg-white/5 text-white/40">

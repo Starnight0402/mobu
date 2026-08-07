@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useMutation, useConvex } from 'convex/react';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { motion } from 'motion/react';
-import { Globe, DollarSign, Save, LogOut, User, Moon, Sun } from 'lucide-react';
+import { Globe, DollarSign, Save, LogOut, User, Moon, Sun, Download } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { AppSettings } from '../types';
 import { useTheme } from '../hooks/useTheme';
@@ -13,8 +13,10 @@ export const SettingsView: React.FC = () => {
   const currentUser = useQuery(api.users.current);
   const { signOut } = useAuthActions();
   const { theme, toggleTheme } = useTheme();
+  const convex = useConvex();
   const [settings, setSettings] = useState<Omit<AppSettings, 'theme'>>({ currency: 'USD', timezone: 'UTC' });
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (remoteSettings) setSettings({ currency: remoteSettings.currency, timezone: remoteSettings.timezone });
@@ -24,6 +26,22 @@ export const SettingsView: React.FC = () => {
     setLoading(true);
     await saveSettings(settings);
     setLoading(false);
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const data = await convex.query(api.dataExport.all, {});
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nexus-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -116,6 +134,14 @@ export const SettingsView: React.FC = () => {
           className="w-full bg-nothing-purple text-white py-4 rounded-2xl font-medium uppercase tracking-[0.3em] text-xs hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
         >
           <Save size={16} /> {loading ? 'Saving...' : 'Save Changes'}
+        </button>
+
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="w-full py-4 rounded-2xl font-medium uppercase tracking-[0.3em] text-xs border border-white/10 text-white/60 hover:border-white/30 hover:text-white transition-all flex items-center justify-center gap-2"
+        >
+          <Download size={16} /> {exporting ? 'Preparing…' : 'Download All Our Data'}
         </button>
       </div>
     </div>
