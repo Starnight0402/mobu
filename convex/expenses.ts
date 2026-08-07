@@ -21,6 +21,9 @@ export const add = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    if (!(args.amount > 0)) throw new Error("Amount must be greater than 0");
+    if (args.splitRatio < 0 || args.splitRatio > 100) throw new Error("Split ratio must be between 0 and 100");
+    if (!args.category.trim()) throw new Error("Category can't be empty");
     return await ctx.db.insert("expenses", { ...args, payerId: userId, settled: false });
   },
 });

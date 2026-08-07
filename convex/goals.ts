@@ -25,6 +25,8 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     await requireUserId(ctx);
+    if (!args.title.trim()) throw new Error("Title can't be empty");
+    if (!(args.target > 0)) throw new Error("Target must be greater than 0");
     return await ctx.db.insert("goals", {
       title: args.title,
       category: args.category,
@@ -39,6 +41,7 @@ export const updateProgress = mutation({
   args: { id: v.id("goals"), current: v.number() },
   handler: async (ctx, args) => {
     await requireUserId(ctx);
+    if (args.current < 0) throw new Error("Progress can't be negative");
     const goal = await ctx.db.get(args.id);
     if (!goal) throw new Error("Goal not found");
     await ctx.db.patch(args.id, {

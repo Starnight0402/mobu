@@ -117,6 +117,7 @@ export const create = mutation({
   args: memoryFields,
   handler: async (ctx, args) => {
     await requireUserId(ctx);
+    if (!args.title.trim()) throw new Error("Title can't be empty");
     return await ctx.db.insert("memories", withDefaults(args));
   },
 });
@@ -125,6 +126,7 @@ export const update = mutation({
   args: { id: v.id("memories"), ...memoryFields },
   handler: async (ctx, args) => {
     await requireUserId(ctx);
+    if (!args.title.trim()) throw new Error("Title can't be empty");
     const { id, ...rest } = args;
     await ctx.db.patch(id, withDefaults(rest));
   },

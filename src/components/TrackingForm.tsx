@@ -15,6 +15,7 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const addTracking = useMutation(api.tracking.add);
   const addExpense = useMutation(api.expenses.add);
 
@@ -55,6 +56,7 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
       if (type === 'money') {
         await addExpense({
@@ -77,8 +79,9 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
       setCategory('');
       setNote('');
       onSuccess();
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'Something went wrong — try again.');
     } finally {
       setLoading(false);
     }
@@ -250,6 +253,10 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
             />
           </div>
         </div>
+
+        {error && (
+          <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{error}</p>
+        )}
 
         <button
           type="submit"

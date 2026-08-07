@@ -23,6 +23,8 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     await requireUserId(ctx);
+    if (!args.title.trim()) throw new Error("Title can't be empty");
+    if (Number.isNaN(new Date(args.unlockDate).getTime())) throw new Error("Invalid unlock date");
     return await ctx.db.insert("capsules", {
       title: args.title,
       type: args.type,
