@@ -33,7 +33,10 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
   ];
 
   return (
-    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-fit px-4">
+    <nav
+      className="fixed left-1/2 -translate-x-1/2 z-50 w-full max-w-fit px-4"
+      style={{ bottom: 'max(1.5rem, calc(env(safe-area-inset-bottom) + 0.5rem))' }}
+    >
       <div className="glass px-2 py-2 flex items-center gap-1 shadow-2xl overflow-x-auto no-scrollbar max-w-[95vw]">
         {tabs.map((tab) => {
           const Icon = tab.icon;

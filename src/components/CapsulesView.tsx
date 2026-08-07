@@ -92,7 +92,7 @@ export const CapsulesView: React.FC = () => {
               </div>
 
               {isLocked && (
-                <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity">
                   <div className="text-center space-y-2">
                     <Lock size={24} className="mx-auto text-white/40" />
                     <p className="text-[10px] uppercase tracking-widest text-white/40">Locked</p>

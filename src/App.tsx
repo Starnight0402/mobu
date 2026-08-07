@@ -78,7 +78,10 @@ function AuthenticatedApp() {
   };
 
   return (
-    <div className="min-h-screen max-w-4xl mx-auto px-6 pt-12">
+    <div
+      className="min-h-screen max-w-4xl mx-auto px-6"
+      style={{ paddingTop: 'max(3rem, calc(env(safe-area-inset-top) + 1rem))' }}
+    >
       <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
