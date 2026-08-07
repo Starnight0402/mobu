@@ -11,6 +11,7 @@ import {
   Sparkles,
   Map as MapIcon,
   MessageCircle,
+  Phone,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -23,6 +24,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
   const tabs = [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'chat', icon: MessageCircle, label: 'Chat' },
+    { id: 'call', icon: Phone, label: 'Call' },
     { id: 'memories', icon: ImageIcon, label: 'Board' },
     { id: 'timeline', icon: Clock, label: 'Timeline' },
     { id: 'map', icon: MapIcon, label: 'Map' },
