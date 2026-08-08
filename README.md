@@ -1,4 +1,4 @@
-# Nexus — Our Life Together
+# Mobu — Our Life Together
 
 A private, real-time archive and life tracker built for exactly two people. Nothing-inspired dark (and light) design: a deep black canvas, glassmorphic surfaces, and a purple accent (`#a855f7`), with a recurring "purple dot" motif that shows up in the nav, the calendar, and the map.
 

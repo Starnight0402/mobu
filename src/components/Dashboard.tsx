@@ -214,7 +214,7 @@ export const Dashboard: React.FC = () => {
     <div className="space-y-8 pb-32">
       <header className="flex justify-between items-end">
         <div className="space-y-1">
-          <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">Nexus</h1>
+          <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">Mobu</h1>
           <p className="text-white/40 text-[10px] uppercase tracking-widest">Intelligence Hub</p>
         </div>
         <div className="flex items-center gap-2">

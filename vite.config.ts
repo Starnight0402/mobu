@@ -29,8 +29,8 @@ export default defineConfig(({mode, command}) => {
         includeAssets: ['icons/apple-touch-icon.png'],
         manifest: {
           id: base,
-          name: 'Nexus — Our Life Together',
-          short_name: 'Nexus',
+          name: 'Mobu — Our Life Together',
+          short_name: 'Mobu',
           description: 'A private, real-time archive and life tracker for two.',
           start_url: base,
           scope: base,

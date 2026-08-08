@@ -3,7 +3,7 @@ import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 
 type Theme = 'light' | 'dark';
-const STORAGE_KEY = 'nexus-theme';
+const STORAGE_KEY = 'mobu-theme';
 
 function systemDefault(): Theme {
   if (typeof window === 'undefined') return 'dark';

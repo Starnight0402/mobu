@@ -44,7 +44,7 @@ export const SignInScreen: React.FC = () => {
           <div className="w-14 h-14 rounded-2xl bg-nothing-purple/10 border border-nothing-purple/20 flex items-center justify-center mx-auto mb-2">
             <Lock className="text-nothing-purple" size={24} />
           </div>
-          <h1 className="text-3xl font-display font-medium tracking-tight dot-matrix">Nexus</h1>
+          <h1 className="text-3xl font-display font-medium tracking-tight dot-matrix">Mobu</h1>
           <p className="text-white/40 text-[10px] uppercase tracking-widest">
             {flow === 'signIn' ? 'Welcome back' : 'Create your account'}
           </p>
