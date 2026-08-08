@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { useAuthActions } from '@convex-dev/auth/react';
+import { ConvexError } from 'convex/values';
 import { motion } from 'motion/react';
 import { Lock, Mail, KeyRound } from 'lucide-react';
+
+function errorMessage(err: unknown): string {
+  if (err instanceof ConvexError && typeof err.data === 'string') return err.data;
+  return err instanceof Error ? err.message : 'Something went wrong';
+}
 
 export const SignInScreen: React.FC = () => {
   const { signIn } = useAuthActions();
@@ -18,7 +24,7 @@ export const SignInScreen: React.FC = () => {
     try {
       await signIn('password', { email: email.trim().toLowerCase(), password, flow });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Something went wrong';
+      const message = errorMessage(err);
       if (message.includes('InvalidAccountId') || message.includes('Invalid credentials')) {
         setError('Wrong email or password.');
       } else if (message.includes('not authorized') || message.includes('private')) {
