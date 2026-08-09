@@ -25,14 +25,22 @@ export const SignInScreen: React.FC = () => {
       await signIn('password', { email: email.trim().toLowerCase(), password, flow });
     } catch (err) {
       const message = errorMessage(err);
-      if (message.includes('InvalidAccountId') || message.includes('Invalid credentials')) {
-        setError('Wrong email or password.');
-      } else if (message.includes('not authorized') || message.includes('private')) {
+      if (message.includes('not authorized') || message.includes('private')) {
+        // The one case that reliably reaches us with its real text, since
+        // it's thrown as a ConvexError (see convex/auth.ts).
         setError("This app is private — that email isn't authorized.");
+      } else if (message.includes('InvalidAccountId') || message.includes('Invalid credentials') || message.includes('InvalidSecret')) {
+        setError('Wrong email or password.');
       } else if (message.includes('already') || message.includes('exists')) {
         setError('An account with that email already exists — try signing in instead.');
+      } else if (flow === 'signIn') {
+        // Everything else the auth library throws internally (InvalidSecret,
+        // InvalidAccountId, ...) gets redacted to a generic message by
+        // Convex on production deployments, so this is the best guess for
+        // whatever's left: on sign-in, it's almost always a typo'd password.
+        setError('Wrong email or password.');
       } else {
-        setError(message);
+        setError('Something went wrong creating that account. If you already have one, try Sign In instead.');
       }
     } finally {
       setLoading(false);
