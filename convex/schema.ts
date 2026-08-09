@@ -22,6 +22,8 @@ export default defineSchema({
     category: v.optional(v.string()),
     note: v.optional(v.string()),
     user: v.string(),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
   }).index("by_type", ["type"]),
 
   memories: defineTable({

@@ -55,6 +55,16 @@
   html[data-theme='light'] #root video {
     filter: invert(1) hue-rotate(180deg);
   }
+
+  /* backdrop-filter renders solid black under a filtered ancestor in
+     Chromium/WebKit — drop the blur in light mode and fall back to a
+     plain translucent background instead. */
+  html[data-theme='light'] .glass,
+  html[data-theme='light'] .glass-dark {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: rgba(0, 0, 0, 0.4);
+  }
 }
 
 @layer components {

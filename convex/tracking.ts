@@ -23,10 +23,30 @@ export const add = mutation({
     value: v.number(),
     category: v.optional(v.string()),
     note: v.optional(v.string()),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     return await ctx.db.insert("tracking", { ...args, user: displayName(user) });
+  },
+});
+
+// One-tap "we're here" check-in: logs a location-type entry with GPS coords
+// for today, used by the togetherness calendar to tell in-person days from
+// long-distance days.
+export const checkIn = mutation({
+  args: { lat: v.number(), lng: v.number(), place: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    return await ctx.db.insert("tracking", {
+      type: "location",
+      value: 1,
+      category: args.place ?? "Check-in",
+      lat: args.lat,
+      lng: args.lng,
+      user: displayName(user),
+    });
   },
 });
 
@@ -93,5 +113,55 @@ export const streak = query({
     }
 
     return { days: streakCount };
+  },
+});
+
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
+
+const TOGETHER_RADIUS_KM = 0.5;
+
+// Per-day status for the given month, based on location check-ins:
+// 'together' (both partners checked in within 500m), 'apart' (both checked
+// in but far apart -- long distance that day), or 'none' (no check-in data).
+export const togetherness = query({
+  args: { year: v.number(), month: v.number() }, // month: 0-11
+  handler: async (ctx, args) => {
+    await requireUserId(ctx);
+    const locations = await ctx.db
+      .query("tracking")
+      .withIndex("by_type", (q) => q.eq("type", "location"))
+      .collect();
+
+    const byDay = new Map<number, { user: string; lat: number; lng: number }[]>();
+    for (const entry of locations) {
+      if (entry.lat === undefined || entry.lng === undefined) continue;
+      const d = new Date(entry._creationTime);
+      if (d.getFullYear() !== args.year || d.getMonth() !== args.month) continue;
+      const day = d.getDate();
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day)!.push({ user: entry.user, lat: entry.lat, lng: entry.lng });
+    }
+
+    const result: Record<number, "together" | "apart" | "none"> = {};
+    for (const [day, points] of byDay) {
+      const users = new Set(points.map((p) => p.user));
+      if (users.size < 2) {
+        result[day] = "none";
+        continue;
+      }
+      const distinctUsers = [...users];
+      const a = points.find((p) => p.user === distinctUsers[0])!;
+      const b = points.find((p) => p.user === distinctUsers[1])!;
+      result[day] = haversineKm(a, b) <= TOGETHER_RADIUS_KM ? "together" : "apart";
+    }
+    return result;
   },
 });

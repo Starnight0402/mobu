@@ -677,10 +677,11 @@ export const MemoryBoard: React.FC = () => {
                       <div className="pt-6 mt-auto">
                         <button
                           onClick={saveMemory}
-                          className="w-full py-4 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-colors flex items-center justify-center gap-2"
+                          disabled={uploading}
+                          className="w-full py-4 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                         >
-                          <Save size={18} />
-                          {isAdding ? 'Add to Web' : 'Save Changes'}
+                          {uploading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                          {uploading ? 'Uploading…' : isAdding ? 'Add to Web' : 'Save Changes'}
                         </button>
                       </div>
                     </>

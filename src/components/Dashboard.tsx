@@ -99,7 +99,7 @@ export const Dashboard: React.FC = () => {
         return (
           <motion.div key="calendar" {...commonProps}>
             {editOverlay}
-            <TogetherCalendar entries={recent} size={widget.size} />
+            <TogetherCalendar size={widget.size} />
           </motion.div>
         );
       case 'memories':
