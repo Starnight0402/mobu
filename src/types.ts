@@ -28,6 +28,8 @@ export interface AppSettings {
   currency: string;
   timezone: string;
   theme?: 'light' | 'dark';
+  /** Optional number backing the tel: fallback on the Call screen. */
+  partnerPhone: string;
 }
 
 export type WidgetSize = 'small' | 'wide' | 'tall' | 'large';

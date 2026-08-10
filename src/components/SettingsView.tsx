@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useConvex } from 'convex/react';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { motion } from 'motion/react';
-import { Globe, DollarSign, Save, LogOut, User, Moon, Sun, Download } from 'lucide-react';
+import { Globe, DollarSign, Save, LogOut, User, Moon, Sun, Download, Smartphone } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { AppSettings } from '../types';
 import { useTheme } from '../hooks/useTheme';
@@ -14,12 +14,22 @@ export const SettingsView: React.FC = () => {
   const { signOut } = useAuthActions();
   const { theme, toggleTheme } = useTheme();
   const convex = useConvex();
-  const [settings, setSettings] = useState<Omit<AppSettings, 'theme'>>({ currency: 'USD', timezone: 'UTC' });
+  const [settings, setSettings] = useState<Omit<AppSettings, 'theme'>>({
+    currency: 'USD',
+    timezone: 'UTC',
+    partnerPhone: '',
+  });
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    if (remoteSettings) setSettings({ currency: remoteSettings.currency, timezone: remoteSettings.timezone });
+    if (remoteSettings) {
+      setSettings({
+        currency: remoteSettings.currency,
+        timezone: remoteSettings.timezone,
+        partnerPhone: remoteSettings.partnerPhone ?? '',
+      });
+    }
   }, [remoteSettings]);
 
   const handleSave = async () => {
@@ -125,6 +135,23 @@ export const SettingsView: React.FC = () => {
               <option value="IST">IST (UTC+5:30)</option>
               <option value="GMT">GMT</option>
             </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/20 ml-2">
+              <Smartphone size={12} /> Partner's Phone
+            </label>
+            <input
+              type="tel"
+              inputMode="tel"
+              placeholder="+91 98765 43210"
+              value={settings.partnerPhone}
+              onChange={e => setSettings({ ...settings, partnerPhone: e.target.value })}
+              className="nothing-input w-full"
+            />
+            <p className="text-[10px] text-white/20 ml-2">
+              Adds a one-tap dialer fallback on the Call screen for when the internet call struggles.
+            </p>
           </div>
         </div>
 

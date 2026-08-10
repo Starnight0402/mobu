@@ -16,6 +16,7 @@ import { CallView } from './components/CallView';
 import { SignInScreen } from './components/SignInScreen';
 import { NameSetup } from './components/NameSetup';
 import { LightboxProvider } from './components/Lightbox';
+import { CallProvider } from './components/CallProvider';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../convex/_generated/api';
 
@@ -30,8 +31,12 @@ export default function App() {
       <Unauthenticated>
         <SignInScreen />
       </Unauthenticated>
+      {/* CallProvider lives above the tab switch so a call survives navigation
+          and the incoming-call sheet can appear from any screen. */}
       <Authenticated>
-        <AuthenticatedApp />
+        <CallProvider>
+          <AuthenticatedApp />
+        </CallProvider>
       </Authenticated>
     </LightboxProvider>
   );

@@ -29,20 +29,31 @@ export const get = query({
     const currency = await getValue(ctx, "currency");
     const timezone = await getValue(ctx, "timezone");
     const theme = await getValue(ctx, "theme");
+    // Used only to build a tel: link for the "call on the phone instead"
+    // fallback when an internet call won't hold.
+    const partnerPhone = await getValue(ctx, "partnerPhone");
     return {
       currency: currency ?? "USD",
       timezone: timezone ?? "UTC",
       theme: (theme === "light" ? "light" : "dark") as "light" | "dark",
+      partnerPhone: partnerPhone ?? "",
     };
   },
 });
 
 export const save = mutation({
-  args: { currency: v.string(), timezone: v.string() },
+  args: {
+    currency: v.string(),
+    timezone: v.string(),
+    partnerPhone: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     await requireUserId(ctx);
     await setValue(ctx, "currency", args.currency);
     await setValue(ctx, "timezone", args.timezone);
+    if (args.partnerPhone !== undefined) {
+      await setValue(ctx, "partnerPhone", args.partnerPhone.trim());
+    }
   },
 });
 

@@ -127,6 +127,31 @@ export default defineSchema({
     sharingUntil: v.number(),
   }).index("by_user", ["userId"]),
 
+  // One row per call attempt. Ringing state used to be *inferred* by scanning
+  // the newest 50 signals for an unanswered offer, which broke as soon as a
+  // call produced more than 50 ICE candidates — the offer fell out of the
+  // window and the callee's phone stopped ringing mid-call.
+  calls: defineTable({
+    callId: v.string(),
+    callerId: v.id("users"),
+    calleeId: v.id("users"),
+    status: v.union(v.literal("ringing"), v.literal("active"), v.literal("ended")),
+    startedAt: v.number(),
+    answeredAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
+    endedReason: v.optional(
+      v.union(
+        v.literal("hangup"),
+        v.literal("declined"),
+        v.literal("missed"),
+        v.literal("failed"),
+      ),
+    ),
+  })
+    .index("by_callId", ["callId"])
+    .index("by_callee_status", ["calleeId", "status"])
+    .index("by_caller_status", ["callerId", "status"]),
+
   callSignals: defineTable({
     callId: v.string(),
     fromUserId: v.id("users"),
@@ -136,7 +161,12 @@ export default defineSchema({
       v.literal("answer"),
       v.literal("ice-candidate"),
       v.literal("hangup"),
+      // Mute / camera-off state, so the other side can show "camera off"
+      // instead of an unexplained black rectangle.
+      v.literal("media-state"),
     ),
     payload: v.string(),
-  }).index("by_callId", ["callId"]),
+  })
+    .index("by_callId", ["callId"])
+    .index("by_callId_and_to", ["callId", "toUserId"]),
 });
