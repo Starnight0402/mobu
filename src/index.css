@@ -45,14 +45,24 @@
    * pages. Colors are approximated by the invert+hue-rotate math rather
    * than hand-tuned, but it's a real, fully functional light theme.
    * Photos/videos are counter-inverted so they don't render as negatives.
+   *
+   * The filter lives on <html>, NOT on #root: a filtered element becomes the
+   * containing block for its position:fixed descendants, so filtering #root
+   * made the bottom nav scroll away with the page and pinned full-screen
+   * modals to the top of the document instead of the viewport. The root
+   * element is already the initial containing block, so fixed positioning
+   * keeps working there.
    */
-  html[data-theme='light'] #root {
+  html[data-theme='light'] {
     filter: invert(1) hue-rotate(180deg);
-    background: #fff;
-    min-height: 100vh;
+    /* Counter-intuitive but correct: a filter re-renders the element's own
+       background too, so the page must be painted BLACK for the inversion to
+       land on white. Filtering #root instead left <body>'s bg-black outside
+       the inversion, so the page stayed black under black-inverted text. */
+    background: #000;
   }
-  html[data-theme='light'] #root img,
-  html[data-theme='light'] #root video {
+  html[data-theme='light'] img,
+  html[data-theme='light'] video {
     filter: invert(1) hue-rotate(180deg);
   }
 
@@ -63,7 +73,51 @@
   html[data-theme='light'] .glass-dark {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background-color: rgba(0, 0, 0, 0.4);
+  }
+
+  /* .glass keeps its bg-white/5, which composites to near-black over the page
+     and inverts to a light card. .glass-dark is bg-black/40 — pure black over
+     a black page — so it would invert to pure white and vanish. */
+  html[data-theme='light'] .glass-dark {
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+
+  /*
+   * Phone: iOS Safari zooms the whole page whenever you focus a form field
+   * whose text is under 16px, and then never zooms back out. Most inputs in
+   * this app are text-sm (14px), which made every tap on a message box or a
+   * tracking field punt you into a zoomed viewport. A 16px floor on the
+   * controls themselves is the only thing that suppresses it without
+   * disabling pinch-zoom for people who actually need it.
+   */
+  @media (max-width: 767px) {
+    input:not([type='range']):not([type='color']):not([type='checkbox']):not([type='radio']),
+    textarea,
+    select {
+      font-size: 16px;
+    }
+
+    /*
+     * The UI leans on sub-10px labels for its terminal look. That reads fine
+     * on a monitor and is genuinely illegible at arm's length on a phone, so
+     * the arbitrary-value type scale gets a floor on small screens. Done here
+     * rather than at ~200 call sites so the desktop look is untouched.
+     */
+    .text-\[6px\] { font-size: 10px; }
+    .text-\[7px\] { font-size: 10px; }
+    .text-\[8px\] { font-size: 11px; }
+    .text-\[9px\] { font-size: 11px; }
+    .text-\[10px\] { font-size: 12px; }
+  }
+
+  /* Comfortable hit targets on touch devices — several icon buttons were
+     under the 44px Apple/Android minimum. */
+  @media (hover: none) and (pointer: coarse) {
+    button,
+    [role='button'],
+    a {
+      touch-action: manipulation;
+    }
   }
 }
 

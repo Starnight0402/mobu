@@ -1,9 +1,10 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from 'convex/react';
-import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'motion/react';
+import { motion, AnimatePresence, useMotionValue, useSpring } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Memory, Id } from '../types';
 import { compressImage } from '../lib/image';
+import { useLightbox } from './Lightbox';
 import { Plus, Maximize2, X, Edit2, Trash2, Upload, Save, Waypoints, LayoutGrid, MapPin, Loader2 } from 'lucide-react';
 
 // Deterministic hash so a memory's position in the web is stable across
@@ -19,10 +20,21 @@ function hashSeed(input: string): number {
 
 const CATEGORIES: Memory['category'][] = ['photo', 'travel', 'food', 'milestone', 'event'];
 
+// Phyllotaxis (sunflower) placement: even coverage with no clustering, and
+// because it is driven by chronological index, adding a memory appends to the
+// outside instead of reshuffling everything already on the board.
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const RING_SPACING = 210;
+// Below this the cards stop being recognisable, so we let the board overflow
+// and be panned instead of shrinking further.
+const MIN_FIT_SCALE = 0.4;
+
 interface Node {
   id: string;
   x: number;
   y: number;
+  w: number;
+  h: number;
   memory: Memory;
   rotation: number;
 }
@@ -56,6 +68,7 @@ export const MemoryBoard: React.FC = () => {
   const updateMemory = useMutation(api.memories.update);
   const removeMemory = useMutation(api.memories.remove);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const { openImage } = useLightbox();
 
   const [isAdding, setIsAdding] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
@@ -73,6 +86,19 @@ export const MemoryBoard: React.FC = () => {
 
   const springX = useSpring(x, { stiffness: 150, damping: 30 });
   const springY = useSpring(y, { stiffness: 150, damping: 30 });
+
+  // The web layout is sized against real measured space rather than assumed
+  // desktop dimensions, so it has to re-run on rotate/resize.
+  const [container, setContainer] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => setContainer({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -205,33 +231,80 @@ export const MemoryBoard: React.FC = () => {
     y.set(0);
   };
 
-  const { nodes, edges } = useMemo(() => {
-    const generatedNodes: Node[] = memories.map((memory) => {
+  const { nodes, edges, fitScale } = useMemo(() => {
+    // Chronological, so index — and therefore position — is stable for every
+    // existing memory when a new one is added.
+    const ordered = [...memories].sort((a, b) => a._creationTime - b._creationTime);
+
+    const placed: Node[] = ordered.map((memory, i) => {
       const id = memory._id;
-      const angle = (hashSeed(id + 'a') % 6283) / 1000; // 0..2π
-      const radius = 150 + (hashSeed(id + 'r') % 800);
-      const jitterX = (hashSeed(id + 'x') % 100) - 50;
-      const jitterY = (hashSeed(id + 'y') % 100) - 50;
-      const posX = Math.cos(angle) * radius + jitterX;
-      const posY = Math.sin(angle) * radius + jitterY;
-      const rotation = (hashSeed(id + 'rot') % 20) - 10;
-      return { id, x: posX, y: posY, memory, rotation };
+      const w = memory.cardWidth || 220;
+      const h = memory.cardHeight || 280;
+      const angle = i * GOLDEN_ANGLE;
+      const radius = RING_SPACING * Math.sqrt(i);
+      const jitterX = (hashSeed(id + 'x') % 40) - 20;
+      const jitterY = (hashSeed(id + 'y') % 40) - 20;
+      return {
+        id,
+        // Cards are absolutely positioned from their top-left, so offset by
+        // half the card to make `radius` measure centre-to-centre.
+        x: Math.cos(angle) * radius + jitterX - w / 2,
+        y: Math.sin(angle) * radius + jitterY - h / 2,
+        w,
+        h,
+        memory,
+        rotation: (hashSeed(id + 'rot') % 16) - 8,
+      };
     });
 
     const generatedEdges: Edge[] = [];
-    for (let i = 1; i < generatedNodes.length; i++) {
-      generatedEdges.push({ source: generatedNodes[i], target: generatedNodes[i - 1] });
+    for (let i = 1; i < placed.length; i++) {
+      generatedEdges.push({ source: placed[i], target: placed[i - 1] });
+      // One extra deterministic strand for the web look. The old code picked
+      // this with Math.random(), so the web re-wired itself on every save.
       if (i > 2) {
-        const randomTarget = Math.floor(Math.random() * (i - 1));
-        generatedEdges.push({ source: generatedNodes[i], target: generatedNodes[randomTarget] });
+        const target = hashSeed(placed[i].id + 'link') % (i - 1);
+        generatedEdges.push({ source: placed[i], target: placed[target] });
       }
     }
 
-    return { nodes: generatedNodes, edges: generatedEdges };
-  }, [memories]);
+    /*
+     * The old layout scattered cards 150–950px from a zero-size origin no
+     * matter how big the viewport was. On a 390px-wide phone that put nearly
+     * every card off-screen, and the distance-based opacity ramp faded the
+     * survivors to nothing — hence a board that looked empty. Now the cloud
+     * is measured and scaled down to fit whatever space it actually has.
+     */
+    let scale = 1;
+    if (placed.length > 0 && container.w > 0 && container.h > 0) {
+      const minX = Math.min(...placed.map((n) => n.x));
+      const maxX = Math.max(...placed.map((n) => n.x + n.w));
+      const minY = Math.min(...placed.map((n) => n.y));
+      const maxY = Math.max(...placed.map((n) => n.y + n.h));
+      const spreadX = Math.max(maxX - minX, 1);
+      const spreadY = Math.max(maxY - minY, 1);
+      const padding = 32;
+      scale = Math.min(
+        1,
+        (container.w - padding) / spreadX,
+        (container.h - padding) / spreadY,
+      );
+      scale = Math.max(scale, MIN_FIT_SCALE);
+
+      // Recentre the cloud on the container's midpoint.
+      const centreX = (minX + maxX) / 2;
+      const centreY = (minY + maxY) / 2;
+      for (const node of placed) {
+        node.x -= centreX;
+        node.y -= centreY;
+      }
+    }
+
+    return { nodes: placed, edges: generatedEdges, fitScale: scale };
+  }, [memories, container.w, container.h]);
 
   const renderForm = () => (
-    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+    <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Title</label>
         <input
@@ -450,18 +523,21 @@ export const MemoryBoard: React.FC = () => {
   );
 
   return (
-    <div className="relative h-[80vh] w-full overflow-hidden rounded-[3rem] border border-white/5 bg-[#0a0a0a] backdrop-blur-sm" ref={containerRef}>
+    <div
+      className="relative h-[calc(100dvh-11rem)] w-full overflow-hidden rounded-[2rem] sm:rounded-[3rem] border border-white/5 bg-[#0a0a0a] backdrop-blur-sm"
+      ref={containerRef}
+    >
       <div className="absolute inset-0 pointer-events-none opacity-20"
            style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
 
-      <div className="absolute top-8 left-8 z-10 space-y-1 pointer-events-none">
-        <h1 className="text-2xl font-medium tracking-tight dot-matrix">{viewMode === 'web' ? 'Memory Web' : 'Gallery'}</h1>
+      <div className="absolute top-5 left-5 sm:top-8 sm:left-8 z-10 space-y-1 pointer-events-none">
+        <h1 className="text-xl sm:text-2xl font-medium tracking-tight dot-matrix">{viewMode === 'web' ? 'Memory Web' : 'Gallery'}</h1>
         <p className="text-white/40 text-[10px] uppercase tracking-widest">
-          {viewMode === 'web' ? 'Pan to explore connections' : `${memories.length} memories`}
+          {viewMode === 'web' ? 'Drag to explore' : `${memories.length} memories`}
         </p>
       </div>
 
-      <div className="absolute top-8 right-8 z-10 flex gap-2">
+      <div className="absolute top-5 right-5 sm:top-8 sm:right-8 z-10 flex gap-2">
         <div className="glass p-1 flex gap-1">
           <button
             onClick={() => setViewMode('web')}
@@ -531,64 +607,66 @@ export const MemoryBoard: React.FC = () => {
         </div>
       )}
 
-      {viewMode === 'web' && <motion.div
-        drag
-        dragConstraints={{ left: -3000, right: 3000, top: -3000, bottom: 3000 }}
-        style={{ x: springX, y: springY }}
-        className="absolute inset-0 flex items-center justify-center cursor-grab active:cursor-grabbing"
-      >
-        <div className="relative" style={{ width: 0, height: 0 }}>
-          <svg className="absolute inset-0 overflow-visible pointer-events-none">
-            {edges.map((edge, i) => {
-              const w1 = edge.source.memory.cardWidth || 220;
-              const h1 = edge.source.memory.cardHeight || 280;
-              const w2 = edge.target.memory.cardWidth || 220;
-              const h2 = edge.target.memory.cardHeight || 280;
-
-              const x1 = edge.source.x + w1 / 2;
-              const y1 = edge.source.y + h1 / 2;
-              const x2 = edge.target.x + w2 / 2;
-              const y2 = edge.target.y + h2 / 2;
-              const midX = (x1 + x2) / 2;
-              const midY = (y1 + y2) / 2;
-
-              return (
-                <g key={`edge-${i}`}>
-                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#ffffff" strokeOpacity="0.15" strokeWidth="2" />
-                  <foreignObject x={midX - 40} y={midY - 10} width="80" height="20" className="overflow-visible">
-                    <div className="flex justify-center">
-                      <span className="bg-black/80 text-white/60 text-[8px] px-2 py-1 rounded-full border border-white/10 backdrop-blur-md whitespace-nowrap">
-                        {new Date(edge.source.memory._creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
-                    </div>
-                  </foreignObject>
-                </g>
-              );
-            })}
-          </svg>
-
-          {nodes.map((node) => (
-            <MemoryCard
-              key={node.id}
-              node={node}
-              parentX={springX}
-              parentY={springY}
-              onClick={() => setSelectedMemory(node.memory)}
-            />
-          ))}
-        </div>
-      </motion.div>}
-
       {viewMode === 'web' && (
+        <motion.div
+          drag
+          dragConstraints={{ left: -2000, right: 2000, top: -2000, bottom: 2000 }}
+          style={{ x: springX, y: springY }}
+          className="absolute inset-0 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none"
+        >
+          {/* Zero-size anchor at the container's centre; the cloud is centred
+              on it by the layout pass and then scaled to fit. */}
+          <div className="relative" style={{ width: 0, height: 0 }}>
+            <div
+              className="relative"
+              style={{ width: 0, height: 0, transform: `scale(${fitScale})` }}
+            >
+              <svg className="absolute inset-0 overflow-visible pointer-events-none">
+                {edges.map((edge, i) => {
+                  const x1 = edge.source.x + edge.source.w / 2;
+                  const y1 = edge.source.y + edge.source.h / 2;
+                  const x2 = edge.target.x + edge.target.w / 2;
+                  const y2 = edge.target.y + edge.target.h / 2;
+                  const midX = (x1 + x2) / 2;
+                  const midY = (y1 + y2) / 2;
+
+                  return (
+                    <g key={`edge-${i}`}>
+                      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#ffffff" strokeOpacity="0.15" strokeWidth="2" />
+                      <foreignObject x={midX - 40} y={midY - 10} width="80" height="20" className="overflow-visible">
+                        <div className="flex justify-center">
+                          <span className="bg-black/80 text-white/60 text-[8px] px-2 py-1 rounded-full border border-white/10 backdrop-blur-md whitespace-nowrap">
+                            {new Date(edge.source.memory._creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                      </foreignObject>
+                    </g>
+                  );
+                })}
+              </svg>
+
+              {nodes.map((node) => (
+                <MemoryCard
+                  key={node.id}
+                  node={node}
+                  onClick={() => setSelectedMemory(node.memory)}
+                />
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {viewMode === 'web' && memories.length === 0 && (
         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-          <div className="w-2 h-2 bg-white/20 rounded-full" />
+          <p className="text-white/20 text-xs uppercase tracking-widest">No memories yet</p>
         </div>
       )}
 
       {/* Detail / Edit Modal */}
       <AnimatePresence>
         {(selectedMemory || isAdding) && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-12">
+          <div className="fixed inset-0 z-[100] flex items-stretch md:items-center justify-center p-0 md:p-12">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -600,14 +678,17 @@ export const MemoryBoard: React.FC = () => {
                 setIsEditing(false);
               }}
             />
+            {/* Phone gets a true full-screen sheet: in the old centred dialog
+                the image pane was `flex-1` inside a column whose other half
+                was a long form, so the photo collapsed to a sliver. */}
             <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              initial={{ scale: 0.98, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative bg-[#111] border border-white/10 rounded-2xl overflow-hidden w-full max-w-5xl flex flex-col md:flex-row max-h-[90vh] shadow-2xl"
+              exit={{ scale: 0.98, opacity: 0, y: 20 }}
+              className="relative bg-[#111] border-0 md:border border-white/10 rounded-none md:rounded-2xl overflow-hidden w-full max-w-5xl flex flex-col md:flex-row h-full md:h-auto md:max-h-[90vh] shadow-2xl"
             >
               {/* Left Side: Preview */}
-              <div className="flex-1 overflow-hidden bg-black flex items-center justify-center p-8 relative">
+              <div className="shrink-0 md:flex-1 h-[36dvh] md:h-auto overflow-hidden bg-black flex items-center justify-center p-4 md:p-8 relative">
                 {isEditing || isAdding ? (
                   <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none">
                     {/* Live Preview of the card */}
@@ -644,17 +725,33 @@ export const MemoryBoard: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <img
-                    src={selectedMemory?.imageUrl}
-                    alt={selectedMemory?.title}
-                    className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                    referrerPolicy="no-referrer"
-                  />
+                  selectedMemory?.imageUrl && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openImage({
+                          src: selectedMemory.imageUrl as string,
+                          alt: selectedMemory.title,
+                          caption: selectedMemory.title,
+                          subcaption: selectedMemory.location,
+                        })
+                      }
+                      className="w-full h-full flex items-center justify-center"
+                      aria-label="View photo full screen"
+                    >
+                      <img
+                        src={selectedMemory.imageUrl}
+                        alt={selectedMemory.title}
+                        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                        referrerPolicy="no-referrer"
+                      />
+                    </button>
+                  )
                 )}
               </div>
 
               {/* Right Side: Info or Form */}
-              <div className="w-full md:w-[400px] p-8 flex flex-col bg-[#111] overflow-hidden">
+              <div className="w-full md:w-[400px] flex-1 min-h-0 p-5 md:p-8 flex flex-col bg-[#111] overflow-hidden">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-2xl font-serif text-white">
                     {isAdding ? 'Pin New Memory' : isEditing ? 'Edit Memory' : 'Memory Details'}
@@ -709,14 +806,12 @@ export const MemoryBoard: React.FC = () => {
 
 interface MemoryCardProps {
   node: Node;
-  parentX: any;
-  parentY: any;
   onClick: () => void;
 }
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ node, parentX, parentY, onClick }) => {
-  const w = node.memory.cardWidth || 220;
-  const h = node.memory.cardHeight || 280;
+const MemoryCard: React.FC<MemoryCardProps> = ({ node, onClick }) => {
+  const w = node.w;
+  const h = node.h;
   const textSize = node.memory.textSize || 14;
   const fontFamily = node.memory.fontFamily || "'Caveat', cursive";
   const textColor = node.memory.textColor || '#000000';
@@ -727,15 +822,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ node, parentX, parentY, onClick
   const shadowEffect = node.memory.shadowEffect || 'xl';
   const bgImageOverlay = node.memory.bgImageOverlay || '';
 
-  const distance = useTransform(() => {
-    const currentX = node.x + parentX.get() + w / 2;
-    const currentY = node.y + parentY.get() + h / 2;
-    return Math.sqrt(currentX * currentX + currentY * currentY);
-  });
-
-  const opacity = useTransform(distance, [0, 1200, 1800], [1, 0.8, 0]);
-  const scale = useTransform(distance, [0, 1200, 1800], [1, 0.9, 0.5]);
-
+  /*
+   * There used to be a distance-from-centre ramp here that faded cards to
+   * opacity 0 past 1800px. Combined with the old oversized scatter it was the
+   * reason the board rendered blank — every card was born outside the fade.
+   * The layout now guarantees cards land inside the viewport, so they simply
+   * stay visible.
+   */
   return (
     <motion.div
       style={{
@@ -744,8 +837,6 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ node, parentX, parentY, onClick
         top: node.y,
         width: w,
         height: h,
-        opacity,
-        scale,
         rotate: node.rotation,
       }}
       onClick={(e) => {

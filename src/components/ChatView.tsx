@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
 import { compressImage } from '../lib/image';
-import { Send, Image as ImageIcon, Mic, Square, Heart, Loader2, Play, Pause } from 'lucide-react';
+import { useLightbox } from './Lightbox';
+import { Send, Image as ImageIcon, Mic, Square, Loader2, Play, Pause } from 'lucide-react';
 
 export const ChatView: React.FC = () => {
   const messages = useQuery(api.messages.list) ?? [];
@@ -13,6 +14,7 @@ export const ChatView: React.FC = () => {
   const markRead = useMutation(api.messages.markRead);
   const react = useMutation(api.messages.react);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const { openGallery } = useLightbox();
 
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -97,8 +99,25 @@ export const ChatView: React.FC = () => {
     react({ id, reaction: current === '❤️' ? undefined : '❤️' });
   };
 
+  // Every photo ever sent, so tapping one opens a swipeable thread gallery
+  // rather than a dead end.
+  const photos = messages
+    .filter((m) => !!m.imageUrl)
+    .map((m) => ({
+      src: m.imageUrl as string,
+      alt: 'Shared photo',
+      subcaption: new Date(m._creationTime).toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    }));
+
   return (
-    <div className="flex flex-col h-[85vh]">
+    /* dvh, not vh: on mobile Safari/Chrome the address bar collapses on
+       scroll and a vh-sized column pushed the composer under the viewport. */
+    <div className="flex flex-col h-[calc(100dvh-11rem)]">
       <header className="space-y-1 mb-4">
         <h1 className="text-4xl font-medium tracking-tight dot-matrix">Chat</h1>
         <p className="text-white/40 text-[10px] uppercase tracking-widest">Just the two of you</p>
@@ -124,7 +143,19 @@ export const ChatView: React.FC = () => {
               >
                 {m.text && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{m.text}</p>}
                 {m.imageUrl && (
-                  <img src={m.imageUrl} alt="attachment" className="rounded-xl max-w-full mt-1" referrerPolicy="no-referrer" />
+                  <button
+                    type="button"
+                    onClick={() => openGallery(photos, photos.findIndex((p) => p.src === m.imageUrl))}
+                    className="mt-1 block w-full"
+                    aria-label="Open photo"
+                  >
+                    <img
+                      src={m.imageUrl}
+                      alt="attachment"
+                      className="rounded-xl max-w-full"
+                      referrerPolicy="no-referrer"
+                    />
+                  </button>
                 )}
                 {m.voiceUrl && <VoiceBubble url={m.voiceUrl} />}
                 <p className={`text-[8px] mt-1 ${isMe ? 'text-white/60' : 'text-white/30'}`}>

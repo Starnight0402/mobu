@@ -4,9 +4,20 @@ import { api } from '../../convex/_generated/api';
 import { motion } from 'motion/react';
 import { Star, Plane, Utensils, Image as ImageIcon, Calendar } from 'lucide-react';
 import { Memory } from '../types';
+import { useLightbox } from './Lightbox';
 
 export const TimelineView: React.FC = () => {
   const memories = useQuery(api.memories.list) ?? [];
+  const { openGallery } = useLightbox();
+
+  const photos = memories
+    .filter((m) => !!m.imageUrl)
+    .map((m) => ({
+      src: m.imageUrl as string,
+      alt: m.title,
+      caption: m.title,
+      subcaption: m.location ?? new Date(m._creationTime).toLocaleDateString(),
+    }));
 
   const getIcon = (category: string) => {
     switch (category) {
@@ -70,14 +81,21 @@ export const TimelineView: React.FC = () => {
                       )}
                     </div>
                     {memory.imageUrl && (
-                      <div className="aspect-video rounded-xl overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openGallery(photos, photos.findIndex((p) => p.src === memory.imageUrl))
+                        }
+                        className="block w-full aspect-video rounded-xl overflow-hidden"
+                        aria-label={`View ${memory.title}`}
+                      >
                         <img
                           src={memory.imageUrl}
                           alt={memory.title}
                           className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700"
                           referrerPolicy="no-referrer"
                         />
-                      </div>
+                      </button>
                     )}
                     <p className="text-sm text-white/60 leading-relaxed">{memory.description}</p>
                   </div>

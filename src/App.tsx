@@ -15,14 +15,15 @@ import { ChatView } from './components/ChatView';
 import { CallView } from './components/CallView';
 import { SignInScreen } from './components/SignInScreen';
 import { NameSetup } from './components/NameSetup';
+import { LightboxProvider } from './components/Lightbox';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../convex/_generated/api';
 
 export default function App() {
   return (
-    <>
+    <LightboxProvider>
       <AuthLoading>
-        <div className="min-h-screen flex items-center justify-center">
+        <div className="min-h-dvh flex items-center justify-center">
           <div className="w-2 h-2 rounded-full bg-nothing-purple animate-pulse" />
         </div>
       </AuthLoading>
@@ -32,7 +33,7 @@ export default function App() {
       <Authenticated>
         <AuthenticatedApp />
       </Authenticated>
-    </>
+    </LightboxProvider>
   );
 }
 
@@ -42,7 +43,7 @@ function AuthenticatedApp() {
 
   if (currentUser === undefined) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-dvh flex items-center justify-center">
         <div className="w-2 h-2 rounded-full bg-nothing-purple animate-pulse" />
       </div>
     );
@@ -85,8 +86,8 @@ function AuthenticatedApp() {
 
   return (
     <div
-      className="min-h-screen max-w-4xl mx-auto px-6"
-      style={{ paddingTop: 'max(3rem, calc(env(safe-area-inset-top) + 1rem))' }}
+      className="min-h-dvh max-w-4xl mx-auto px-4 sm:px-6"
+      style={{ paddingTop: 'max(1.75rem, calc(env(safe-area-inset-top) + 1rem))' }}
     >
       <AnimatePresence mode="wait">
         <motion.div

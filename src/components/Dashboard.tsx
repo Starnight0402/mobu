@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { WidgetConfig, WidgetSize } from '../types';
 import { TogetherCalendar } from './TogetherCalendar';
+import { useLightbox } from './Lightbox';
 import {
   Wallet,
   Smile,
@@ -39,6 +40,16 @@ export const Dashboard: React.FC = () => {
   const settings = useQuery(api.settings.get) ?? { currency: 'USD', timezone: 'UTC' };
   const widgetsDoc = useQuery(api.widgets.list);
   const saveWidgets = useMutation(api.widgets.saveAll);
+  const { openGallery } = useLightbox();
+
+  const memoryPhotos = memories
+    .filter((m) => !!m.imageUrl)
+    .map((m) => ({
+      src: m.imageUrl as string,
+      alt: m.title,
+      caption: m.title,
+      subcaption: m.location,
+    }));
 
   const widgets: WidgetConfig[] =
     widgetsDoc && widgetsDoc.length > 0
@@ -115,14 +126,22 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className={`grid gap-2 ${widget.size === 'small' ? 'grid-cols-1' : widget.size === 'wide' ? 'grid-cols-3' : 'grid-cols-2'}`}>
               {memories.slice(0, widget.size === 'small' ? 1 : widget.size === 'large' ? 4 : 3).map((memory) => (
-                <div key={memory._id} className="aspect-square rounded-xl overflow-hidden glass border border-white/5">
+                <button
+                  key={memory._id}
+                  type="button"
+                  onClick={() =>
+                    openGallery(memoryPhotos, memoryPhotos.findIndex((p) => p.src === memory.imageUrl))
+                  }
+                  className="aspect-square rounded-xl overflow-hidden glass border border-white/5"
+                  aria-label={`View ${memory.title}`}
+                >
                   <img
                     src={memory.imageUrl}
                     alt={memory.title}
                     className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500"
                     referrerPolicy="no-referrer"
                   />
-                </div>
+                </button>
               ))}
             </div>
           </motion.div>
@@ -242,11 +261,28 @@ export const Dashboard: React.FC = () => {
             <h2 className="text-[10px] uppercase tracking-[0.2em] text-white/60">On This Day</h2>
           </div>
           <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
-            {onThisDay.map((m) => (
+            {onThisDay.map((m, i) => (
               <div key={m._id} className="flex-shrink-0 w-40 space-y-2">
-                <div className="aspect-square rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() =>
+                    openGallery(
+                      onThisDay
+                        .filter((x) => !!x.imageUrl)
+                        .map((x) => ({
+                          src: x.imageUrl as string,
+                          alt: x.title,
+                          caption: x.title,
+                          subcaption: new Date(x._creationTime).getFullYear().toString(),
+                        })),
+                      i,
+                    )
+                  }
+                  className="block w-full aspect-square rounded-xl overflow-hidden"
+                  aria-label={`View ${m.title}`}
+                >
                   <img src={m.imageUrl} alt={m.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </div>
+                </button>
                 <p className="text-xs font-medium truncate">{m.title}</p>
                 <p className="text-[9px] text-white/40">{new Date(m._creationTime).getFullYear()}</p>
               </div>
