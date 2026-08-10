@@ -27,7 +27,12 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: 'activity', size: 'wide', order: 6 },
 ];
 
-export const Dashboard: React.FC = () => {
+interface DashboardProps {
+  /** Lets widgets act as entry points into their full screens. */
+  onNavigate: (tab: string) => void;
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [isEditing, setIsEditing] = useState(false);
 
   const stats = useQuery(api.tracking.stats);
@@ -40,6 +45,7 @@ export const Dashboard: React.FC = () => {
   const settings = useQuery(api.settings.get) ?? { currency: 'USD', timezone: 'UTC' };
   const widgetsDoc = useQuery(api.widgets.list);
   const saveWidgets = useMutation(api.widgets.saveAll);
+  const balance = useQuery(api.expenses.balance);
   const { openGallery } = useLightbox();
 
   const memoryPhotos = memories
@@ -164,13 +170,33 @@ export const Dashboard: React.FC = () => {
             )}
           </motion.div>
         );
-      case 'stats':
+      case 'stats': {
+        // Tapping through to the full money-split screen is the point of this
+        // widget, so it behaves like a link unless the grid is being edited.
+        const outstanding = balance?.byCurrency?.[0];
         return (
-          <motion.div key="stats" {...commonProps}>
+          <motion.div
+            key="stats"
+            {...commonProps}
+            className={`${commonProps.className} ${isEditing ? '' : 'cursor-pointer hover:bg-white/[0.06]'} transition-colors`}
+            role={isEditing ? undefined : 'button'}
+            tabIndex={isEditing ? undefined : 0}
+            onClick={() => !isEditing && onNavigate('split')}
+            onKeyDown={(e) => {
+              if (isEditing) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onNavigate('split');
+              }
+            }}
+          >
             {editOverlay}
-            <div className="flex items-center gap-2 mb-4">
-              <Smile className="text-white/40" size={18} />
-              <h3 className="text-[10px] uppercase tracking-widest font-medium">Stats</h3>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Smile className="text-white/40" size={18} />
+                <h3 className="text-[10px] uppercase tracking-widest font-medium">Stats</h3>
+              </div>
+              <ChevronRight size={14} className="text-white/20" />
             </div>
             <div className={`grid ${widget.size === 'wide' || widget.size === 'large' ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
               <div>
@@ -184,8 +210,20 @@ export const Dashboard: React.FC = () => {
                 <p className="text-[8px] uppercase tracking-widest text-white/20">Spent</p>
               </div>
             </div>
+            {outstanding && (
+              <p
+                className={`mt-3 text-[10px] font-mono ${
+                  outstanding.net > 0 ? 'text-green-400' : 'text-orange-400'
+                }`}
+              >
+                {outstanding.net > 0 ? 'Owed to you' : 'You owe'}{' '}
+                {getCurrencySymbol(outstanding.currency)}
+                {Math.abs(outstanding.net).toFixed(2)}
+              </p>
+            )}
           </motion.div>
         );
+      }
       case 'capsule':
         return (
           <motion.div key="capsule" {...commonProps}>
@@ -300,7 +338,10 @@ export const Dashboard: React.FC = () => {
       <section className="space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="text-[10px] uppercase tracking-[0.2em] text-white/40">Recent Activity</h2>
-          <button className="text-[10px] uppercase tracking-widest text-white/20 hover:text-white/40 flex items-center gap-1">
+          <button
+            onClick={() => onNavigate('logs')}
+            className="text-[10px] uppercase tracking-widest text-white/20 hover:text-white/40 flex items-center gap-1"
+          >
             View All <ChevronRight size={12} />
           </button>
         </div>

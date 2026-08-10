@@ -5,6 +5,8 @@ import { Dashboard } from './components/Dashboard';
 import { TrackingForm } from './components/TrackingForm';
 import { MemoryBoard } from './components/MemoryBoard';
 import { StatsView } from './components/StatsView';
+import { SplitView } from './components/SplitView';
+import { LogsView } from './components/LogsView';
 import { SettingsView } from './components/SettingsView';
 import { TimelineView } from './components/TimelineView';
 import { GoalsView } from './components/GoalsView';
@@ -61,7 +63,7 @@ function AuthenticatedApp() {
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
-        return <Dashboard key="home" />;
+        return <Dashboard key="home" onNavigate={setActiveTab} />;
       case 'track':
         return <TrackingForm key="track" onSuccess={() => setActiveTab('home')} />;
       case 'chat':
@@ -82,6 +84,10 @@ function AuthenticatedApp() {
         return <MapView key="map" />;
       case 'stats':
         return <StatsView key="stats" />;
+      case 'split':
+        return <SplitView key="split" />;
+      case 'logs':
+        return <LogsView key="logs" />;
       case 'settings':
         return <SettingsView key="settings" />;
       default:

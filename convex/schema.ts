@@ -69,7 +69,24 @@ export default defineSchema({
     note: v.optional(v.string()),
     receiptStorageId: v.optional(v.id("_storage")),
     settled: v.boolean(),
-  }).index("by_payer", ["payerId"]),
+    // When the money was actually spent, so an expense can be backdated
+    // instead of being pinned to _creationTime.
+    spentAt: v.optional(v.number()),
+    settledAt: v.optional(v.number()),
+  })
+    .index("by_payer", ["payerId"])
+    .index("by_settled", ["settled"]),
+
+  // A record of money actually changing hands. Settling used to just flip
+  // every expense's `settled` flag, which erased any trace of who paid whom.
+  settlements: defineTable({
+    fromUserId: v.id("users"), // the debtor, who handed the money over
+    toUserId: v.id("users"),
+    amount: v.number(),
+    currency: v.string(),
+    note: v.optional(v.string()),
+    settledAt: v.number(),
+  }).index("by_settledAt", ["settledAt"]),
 
   goals: defineTable({
     title: v.string(),

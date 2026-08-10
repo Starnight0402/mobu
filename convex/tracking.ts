@@ -50,6 +50,97 @@ export const checkIn = mutation({
   },
 });
 
+const trackingType = v.union(
+  v.literal("money"),
+  v.literal("mood"),
+  v.literal("health"),
+  v.literal("food"),
+  v.literal("activity"),
+  v.literal("location"),
+);
+
+/**
+ * Everything either of you has logged, newest first — tracking entries and
+ * expenses merged into one feed.
+ *
+ * Money lives in `expenses` while everything else lives in `tracking`, but
+ * that's an implementation detail: from the outside they're all just log
+ * entries, so the Logs screen shows them together.
+ */
+export const feed = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireUserId(ctx);
+    // Two people logging a handful of things a day doesn't come close to
+    // needing cursor pagination; a generous cap keeps it a single round trip.
+    const CAP = 500;
+
+    const entries = await ctx.db.query("tracking").order("desc").take(CAP);
+    const expenses = await ctx.db.query("expenses").order("desc").take(CAP);
+    const users = await ctx.db.query("users").collect();
+    const nameOf = (id: (typeof users)[number]["_id"]) => {
+      const user = users.find((u) => u._id === id);
+      return user?.name || user?.email?.split("@")[0] || "Unknown";
+    };
+
+    const unified = [
+      ...entries.map((entry) => ({
+        id: entry._id as string,
+        kind: "tracking" as const,
+        type: entry.type,
+        value: entry.value,
+        category: entry.category,
+        note: entry.note,
+        user: entry.user,
+        at: entry._creationTime,
+        currency: null as string | null,
+        editable: true,
+      })),
+      ...expenses.map((expense) => ({
+        id: expense._id as string,
+        kind: "expense" as const,
+        type: "money" as const,
+        value: expense.amount,
+        category: expense.category,
+        note: expense.note,
+        user: nameOf(expense.payerId),
+        at: expense.spentAt ?? expense._creationTime,
+        currency: expense.currency,
+        // Amounts and splits are edited on the Split screen, where the
+        // balance consequences are visible.
+        editable: false,
+      })),
+    ];
+
+    return unified.sort((a, b) => b.at - a.at).slice(0, CAP);
+  },
+});
+
+export const update = mutation({
+  args: {
+    id: v.id("tracking"),
+    type: trackingType,
+    value: v.number(),
+    category: v.optional(v.string()),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireUserId(ctx);
+    const { id, ...rest } = args;
+    const existing = await ctx.db.get(id);
+    if (!existing) throw new Error("That entry no longer exists");
+    await ctx.db.patch(id, rest);
+  },
+});
+
+export const remove = mutation({
+  args: { id: v.id("tracking") },
+  handler: async (ctx, args) => {
+    await requireUserId(ctx);
+    await ctx.db.delete(args.id);
+  },
+});
+
 export const stats = query({
   args: {},
   handler: async (ctx) => {

@@ -14,6 +14,8 @@ import {
   Phone,
   MoreHorizontal,
   X,
+  Scale,
+  ListChecks,
   LucideIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -44,6 +46,8 @@ const PRIMARY_TABS: TabDef[] = [
 
 const MORE_TABS: TabDef[] = [
   { id: 'track', icon: Plus, label: 'Track' },
+  { id: 'logs', icon: ListChecks, label: 'Logs' },
+  { id: 'split', icon: Scale, label: 'Split' },
   { id: 'timeline', icon: Clock, label: 'Timeline' },
   { id: 'map', icon: MapIcon, label: 'Map' },
   { id: 'insights', icon: Sparkles, label: 'Insights' },
