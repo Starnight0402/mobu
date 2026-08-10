@@ -8,7 +8,7 @@ import { Memory } from '../types';
 // A standard dark map theme (in the spirit of Snazzy Maps' "Midnight
 // Commander" family) so Google's tiles match the app's black/purple palette
 // instead of the default light basemap.
-const DARK_MAP_STYLE = [
+export const DARK_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#0a0a0a' }] },
   { elementType: 'labels.text.stroke', stylers: [{ color: '#0a0a0a' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#8a8a8a' }] },
@@ -22,7 +22,7 @@ const DARK_MAP_STYLE = [
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4a4a4a' }] },
 ];
 
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 const MIN_WRITE_INTERVAL_MS = 12_000;
 const SHARE_DURATIONS = [
   { label: '1 hour', hours: 1 },

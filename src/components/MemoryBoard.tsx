@@ -4,8 +4,10 @@ import { motion, AnimatePresence, useMotionValue, useSpring } from 'motion/react
 import { api } from '../../convex/_generated/api';
 import { Memory, Id } from '../types';
 import { compressImage } from '../lib/image';
+import { reverseGeocode } from '../lib/geocode';
 import { useLightbox } from './Lightbox';
-import { Plus, Maximize2, X, Edit2, Trash2, Upload, Save, Waypoints, LayoutGrid, MapPin, Loader2 } from 'lucide-react';
+import { LocationPickerModal } from './LocationPickerModal';
+import { Plus, Maximize2, X, Edit2, Trash2, Upload, Save, Waypoints, LayoutGrid, MapPin, MapPinned, Loader2 } from 'lucide-react';
 
 // Deterministic hash so a memory's position in the web is stable across
 // reloads/re-renders regardless of array order — fixes the old
@@ -76,6 +78,7 @@ export const MemoryBoard: React.FC = () => {
   const [viewMode, setViewMode] = useState<'web' | 'grid'>('web');
   const [uploading, setUploading] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState<MemoryFormState>({});
@@ -129,23 +132,17 @@ export const MemoryBoard: React.FC = () => {
       async (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords;
         setFormData((prev) => ({ ...prev, lat, lng }));
-        const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-        if (apiKey) {
-          try {
-            const res = await fetch(
-              `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`,
-            );
-            const data = await res.json();
-            const place = data.results?.[0]?.formatted_address;
-            if (place) setFormData((prev) => ({ ...prev, location: place }));
-          } catch (err) {
-            console.error('Reverse geocoding failed', err);
-          }
-        }
+        const place = await reverseGeocode(lat, lng);
+        if (place) setFormData((prev) => ({ ...prev, location: place }));
         setLocating(false);
       },
       () => setLocating(false),
     );
+  };
+
+  const confirmMapLocation = (lat: number, lng: number, address?: string) => {
+    setFormData((prev) => ({ ...prev, lat, lng, location: address || prev.location }));
+    setShowMapPicker(false);
   };
 
   const saveMemory = async () => {
@@ -375,6 +372,14 @@ export const MemoryBoard: React.FC = () => {
               className="flex items-center justify-center bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl px-4 transition-colors disabled:opacity-50"
             >
               {locating ? <Loader2 size={16} className="text-white animate-spin" /> : <MapPin size={16} className="text-white" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMapPicker(true)}
+              title="Pick location on map"
+              className="flex items-center justify-center bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl px-4 transition-colors"
+            >
+              <MapPinned size={16} className="text-white" />
             </button>
           </div>
           {formData.lat != null && (
@@ -800,6 +805,15 @@ export const MemoryBoard: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {showMapPicker && (
+        <LocationPickerModal
+          initialLat={formData.lat}
+          initialLng={formData.lng}
+          onConfirm={confirmMapLocation}
+          onClose={() => setShowMapPicker(false)}
+        />
+      )}
     </div>
   );
 };
