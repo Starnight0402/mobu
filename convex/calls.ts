@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, QueryCtx } from "./_generated/server";
 import { requireUserId } from "./authHelpers";
+import { displayNameOf, notifyUser } from "./notify";
 
 // A ringing call nobody picks up shouldn't ring forever if the caller's tab
 // died before it could clean up.
@@ -63,6 +64,17 @@ export const start = mutation({
       startedAt: Date.now(),
     });
     await ctx.db.patch(docId, { callId: docId });
+
+    const caller = await ctx.db.get(callerId);
+    await notifyUser(ctx, {
+      userId: args.calleeId,
+      kind: "call",
+      title: `${displayNameOf(caller)} is calling`,
+      body: "Incoming video call",
+      tab: "call",
+      urgent: true,
+    });
+
     return docId as string;
   },
 });
@@ -162,11 +174,25 @@ export const end = mutation({
       throw new Error("That call isn't yours to end");
     }
     if (call.status !== "ended") {
+      const reason = args.reason ?? "hangup";
       await ctx.db.patch(call._id, {
         status: "ended",
         endedAt: Date.now(),
-        endedReason: args.reason ?? "hangup",
+        endedReason: reason,
       });
+
+      // Only a ring that was never picked up is worth telling someone about
+      // after the fact.
+      if (reason === "missed" && call.status === "ringing") {
+        const caller = await ctx.db.get(call.callerId);
+        await notifyUser(ctx, {
+          userId: call.calleeId,
+          kind: "missed-call",
+          title: "Missed call",
+          body: `You missed a call from ${displayNameOf(caller)}`,
+          tab: "call",
+        });
+      }
     }
   },
 });

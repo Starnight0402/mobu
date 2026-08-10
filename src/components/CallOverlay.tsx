@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, VideoOff as CamOff, Volume2 } from 'lucide-react';
 import { useCall } from './CallProvider';
+import { haptic, startRepeatingHaptic } from '../lib/haptics';
+import { startRingtone } from '../lib/ringtone';
 
 /**
  * Attaches a MediaStream once the element actually exists.
@@ -185,7 +187,10 @@ export const CallOverlay: React.FC = () => {
           icon={muted ? <MicOff size={22} /> : <Mic size={22} />}
         />
         <button
-          onClick={() => void hangUp()}
+          onClick={() => {
+            haptic('warning');
+            void hangUp();
+          }}
           aria-label="End call"
           className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-xl transition-transform active:scale-90"
         >
@@ -209,7 +214,10 @@ const ControlButton: React.FC<{
   icon: React.ReactNode;
 }> = ({ active, onClick, label, icon }) => (
   <button
-    onClick={onClick}
+    onClick={() => {
+      haptic('tap');
+      onClick();
+    }}
     aria-label={label}
     aria-pressed={active}
     className={`flex h-14 w-14 items-center justify-center rounded-full transition-all active:scale-90 ${
@@ -227,15 +235,14 @@ const ControlButton: React.FC<{
 export const IncomingCallSheet: React.FC = () => {
   const { peerName, accept, decline } = useCall();
 
-  // A visible ring is easy to miss on a phone that's face-down in a pocket.
+  // Ring and buzz until it's answered or declined — a silent visual is easy to
+  // miss on a phone that's face-down in a pocket.
   useEffect(() => {
-    if (!navigator.vibrate) return;
-    const buzz = () => navigator.vibrate([600, 400]);
-    buzz();
-    const id = setInterval(buzz, 1000);
+    const stopRing = startRingtone();
+    const stopBuzz = startRepeatingHaptic('ring', 3000);
     return () => {
-      clearInterval(id);
-      navigator.vibrate(0);
+      stopRing();
+      stopBuzz();
     };
   }, []);
 
@@ -269,7 +276,10 @@ export const IncomingCallSheet: React.FC = () => {
         <div className="flex w-full max-w-xs items-center justify-between px-4">
           <div className="flex flex-col items-center gap-3">
             <button
-              onClick={() => void decline()}
+              onClick={() => {
+                haptic('warning');
+                void decline();
+              }}
               aria-label="Decline call"
               className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-xl transition-transform active:scale-90"
             >
@@ -279,7 +289,10 @@ export const IncomingCallSheet: React.FC = () => {
           </div>
           <div className="flex flex-col items-center gap-3">
             <motion.button
-              onClick={() => void accept()}
+              onClick={() => {
+                haptic('success');
+                void accept();
+              }}
               aria-label="Accept call"
               animate={{ y: [0, -6, 0] }}
               transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}

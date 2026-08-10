@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { Wallet, Smile, Activity, Coffee, Heart, Send } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { TrackingType } from '../types';
+import { haptic } from '../lib/haptics';
 
 export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => {
   const currentUser = useQuery(api.users.current);
@@ -78,9 +79,11 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
       setTotalAmount('');
       setCategory('');
       setNote('');
+      haptic('success');
       onSuccess();
     } catch (err) {
       console.error(err);
+      haptic('error');
       setError(err instanceof Error ? err.message : 'Something went wrong — try again.');
     } finally {
       setLoading(false);

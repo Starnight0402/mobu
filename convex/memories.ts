@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
 import { mutation, query, QueryCtx } from "./_generated/server";
 import { requireUserId } from "./authHelpers";
+import { displayNameOf, notifyUser, partnerOf } from "./notify";
 
 const categoryValidator = v.union(
   v.literal("photo"),
@@ -116,9 +117,22 @@ export const onThisDay = query({
 export const create = mutation({
   args: memoryFields,
   handler: async (ctx, args) => {
-    await requireUserId(ctx);
+    const userId = await requireUserId(ctx);
     if (!args.title.trim()) throw new Error("Title can't be empty");
-    return await ctx.db.insert("memories", withDefaults(args));
+    const id = await ctx.db.insert("memories", withDefaults(args));
+
+    const partner = await partnerOf(ctx, userId);
+    if (partner) {
+      const author = await ctx.db.get(userId);
+      await notifyUser(ctx, {
+        userId: partner._id,
+        kind: "memory",
+        title: `${displayNameOf(author)} pinned a memory`,
+        body: args.title.trim(),
+        tab: "memories",
+      });
+    }
+    return id;
   },
 });
 

@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useConvex } from 'convex/react';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { motion } from 'motion/react';
-import { Globe, DollarSign, Save, LogOut, User, Moon, Sun, Download, Smartphone } from 'lucide-react';
+import { Globe, DollarSign, Save, LogOut, User, Moon, Sun, Download, Smartphone, Bell, Vibrate } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { AppSettings } from '../types';
 import { useTheme } from '../hooks/useTheme';
+import { useNotifications } from './NotificationProvider';
+import { haptic, hapticsEnabled, hapticsSupported, setHapticsEnabled } from '../lib/haptics';
 
 export const SettingsView: React.FC = () => {
   const remoteSettings = useQuery(api.settings.get);
@@ -21,6 +23,16 @@ export const SettingsView: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  const {
+    permission,
+    deviceRegistered,
+    enable: enableNotifications,
+    disable: disableNotifications,
+  } = useNotifications();
+  const [haptics, setHaptics] = useState(hapticsEnabled);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const notificationsOn = permission === 'granted' && deviceRegistered;
 
   useEffect(() => {
     if (remoteSettings) {
@@ -102,6 +114,56 @@ export const SettingsView: React.FC = () => {
           </button>
         </div>
 
+        <div className="flex items-center justify-between pb-6 border-b border-white/5">
+          <div className="flex-1 pr-4">
+            <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/20">
+              <Bell size={12} /> Notifications
+            </label>
+            <p className="mt-1 text-[10px] text-white/30">
+              {permission === 'unsupported'
+                ? 'Not supported in this browser'
+                : notificationsOn
+                  ? `On for this device${pushError ? '' : ''}`
+                  : 'Off — calls and messages will not reach you when the app is closed'}
+            </p>
+            {pushError && <p className="mt-1 text-[10px] text-red-400">{pushError}</p>}
+          </div>
+          <Toggle
+            on={notificationsOn}
+            disabled={permission === 'unsupported'}
+            onClick={async () => {
+              setPushError(null);
+              if (notificationsOn) {
+                await disableNotifications();
+              } else {
+                const reason = await enableNotifications();
+                if (reason) setPushError(reason);
+              }
+            }}
+          />
+        </div>
+
+        <div className="flex items-center justify-between pb-6 border-b border-white/5">
+          <div className="flex-1 pr-4">
+            <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/20">
+              <Vibrate size={12} /> Haptics
+            </label>
+            <p className="mt-1 text-[10px] text-white/30">
+              {hapticsSupported ? 'Vibration on taps, alerts and calls' : 'Not supported on this device'}
+            </p>
+          </div>
+          <Toggle
+            on={haptics}
+            disabled={!hapticsSupported}
+            onClick={() => {
+              const next = !haptics;
+              setHaptics(next);
+              setHapticsEnabled(next);
+              if (next) haptic('success');
+            }}
+          />
+        </div>
+
         <div className="space-y-6">
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/20 ml-2">
@@ -174,3 +236,26 @@ export const SettingsView: React.FC = () => {
     </div>
   );
 };
+
+const Toggle: React.FC<{ on: boolean; disabled?: boolean; onClick: () => void }> = ({
+  on,
+  disabled = false,
+  onClick,
+}) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    role="switch"
+    aria-checked={on}
+    className={`relative h-8 w-14 shrink-0 rounded-full border transition-colors disabled:opacity-30 ${
+      on ? 'border-nothing-purple/40 bg-nothing-purple/20' : 'border-white/10 bg-white/5'
+    }`}
+  >
+    <motion.div
+      layout
+      className={`absolute top-1 h-6 w-6 rounded-full ${on ? 'bg-nothing-purple' : 'bg-white/30'}`}
+      animate={{ left: on ? 28 : 4 }}
+      transition={{ type: 'spring', bounce: 0.2, duration: 0.3 }}
+    />
+  </button>
+);

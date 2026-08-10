@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
 import { mutation, query, QueryCtx } from "./_generated/server";
 import { requireUserId } from "./authHelpers";
+import { displayNameOf, notifyUser, partnerOf } from "./notify";
 
 async function withUrls(ctx: QueryCtx, m: Doc<"messages">) {
   return {
@@ -32,7 +33,24 @@ export const send = mutation({
     if (!args.text && !args.imageStorageId && !args.voiceStorageId) {
       throw new Error("Empty message");
     }
-    return await ctx.db.insert("messages", { ...args, senderId });
+    const id = await ctx.db.insert("messages", { ...args, senderId });
+
+    const partner = await partnerOf(ctx, senderId);
+    if (partner) {
+      const sender = await ctx.db.get(senderId);
+      await notifyUser(ctx, {
+        userId: partner._id,
+        kind: "message",
+        title: displayNameOf(sender),
+        body: args.text
+          ? args.text.slice(0, 140)
+          : args.imageStorageId
+            ? "📷 Sent a photo"
+            : "🎤 Sent a voice note",
+        tab: "chat",
+      });
+    }
+    return id;
   },
 });
 

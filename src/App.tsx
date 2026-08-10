@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Authenticated, Unauthenticated, AuthLoading, useQuery } from 'convex/react';
 import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
@@ -19,6 +19,8 @@ import { SignInScreen } from './components/SignInScreen';
 import { NameSetup } from './components/NameSetup';
 import { LightboxProvider } from './components/Lightbox';
 import { CallProvider } from './components/CallProvider';
+import { NotificationProvider, useNotifications } from './components/NotificationProvider';
+import { NotificationsView } from './components/NotificationsView';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../convex/_generated/api';
 
@@ -48,6 +50,9 @@ function AuthenticatedApp() {
   const currentUser = useQuery(api.users.current);
   const [activeTab, setActiveTab] = useState('home');
 
+  // NotificationProvider needs to drive navigation (a tapped notification has
+  // to land on the right screen), so it wraps the shell rather than sitting
+  // inside it.
   if (currentUser === undefined) {
     return (
       <div className="min-h-dvh flex items-center justify-center">
@@ -88,12 +93,39 @@ function AuthenticatedApp() {
         return <SplitView key="split" />;
       case 'logs':
         return <LogsView key="logs" />;
+      case 'notifications':
+        return <NotificationsView key="notifications" onNavigate={setActiveTab} />;
       case 'settings':
         return <SettingsView key="settings" />;
       default:
-        return <Dashboard key="home" />;
+        return <Dashboard key="home" onNavigate={setActiveTab} />;
     }
   };
+
+  return (
+    <NotificationProvider onNavigate={setActiveTab}>
+      <AppShell activeTab={activeTab} setActiveTab={setActiveTab}>
+        {renderContent()}
+      </AppShell>
+    </NotificationProvider>
+  );
+}
+
+function AppShell({
+  activeTab,
+  setActiveTab,
+  children,
+}: {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  children: React.ReactNode;
+}) {
+  const { markTabRead } = useNotifications();
+
+  // Looking at a screen is what clears its badge.
+  useEffect(() => {
+    markTabRead(activeTab);
+  }, [activeTab, markTabRead]);
 
   return (
     <div
@@ -108,7 +140,7 @@ function AuthenticatedApp() {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.3 }}
         >
-          {renderContent()}
+          {children}
         </motion.div>
       </AnimatePresence>
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />

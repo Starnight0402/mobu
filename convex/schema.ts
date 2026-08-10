@@ -169,6 +169,45 @@ export default defineSchema({
     .index("by_callee_status", ["calleeId", "status"])
     .index("by_caller_status", ["callerId", "status"]),
 
+  // One row per browser/device that has granted notification permission.
+  // Endpoints go stale (browser reinstall, permission revoked), so the sender
+  // prunes any that come back 404/410.
+  pushSubscriptions: defineTable({
+    userId: v.id("users"),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    label: v.optional(v.string()),
+    lastSeenAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_endpoint", ["endpoint"]),
+
+  // The in-app half of notifications: what drives unread badges and the
+  // notification list, independent of whether a push was actually delivered.
+  notifications: defineTable({
+    userId: v.id("users"), // recipient
+    kind: v.union(
+      v.literal("call"),
+      v.literal("missed-call"),
+      v.literal("message"),
+      v.literal("expense"),
+      v.literal("memory"),
+      v.literal("checkin"),
+      v.literal("goal"),
+      v.literal("insight"),
+      v.literal("capsule"),
+      v.literal("streak"),
+    ),
+    title: v.string(),
+    body: v.string(),
+    /** Which screen to open when it's tapped. */
+    tab: v.optional(v.string()),
+    readAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_and_read", ["userId", "readAt"]),
+
   callSignals: defineTable({
     callId: v.string(),
     fromUserId: v.id("users"),

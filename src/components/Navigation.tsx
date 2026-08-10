@@ -16,9 +16,12 @@ import {
   X,
   Scale,
   ListChecks,
+  Bell,
   LucideIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNotifications } from './NotificationProvider';
+import { haptic } from '../lib/haptics';
 
 interface NavigationProps {
   activeTab: string;
@@ -45,6 +48,7 @@ const PRIMARY_TABS: TabDef[] = [
 ];
 
 const MORE_TABS: TabDef[] = [
+  { id: 'notifications', icon: Bell, label: 'Alerts' },
   { id: 'track', icon: Plus, label: 'Track' },
   { id: 'logs', icon: ListChecks, label: 'Logs' },
   { id: 'split', icon: Scale, label: 'Split' },
@@ -59,8 +63,21 @@ const MORE_TABS: TabDef[] = [
 
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
   const [moreOpen, setMoreOpen] = useState(false);
+  const { unreadByTab } = useNotifications();
 
   const moreIsActive = MORE_TABS.some((t) => t.id === activeTab) && activeTab !== 'track';
+
+  // Anything the bar doesn't badge directly rolls up onto the More button, so
+  // no notification is invisible just because its screen is behind the sheet.
+  const primaryIds = new Set(PRIMARY_TABS.map((t) => t.id));
+  const moreUnread = Object.entries(unreadByTab)
+    .filter(([tab]) => !primaryIds.has(tab))
+    .reduce((sum, [, count]) => sum + count, 0);
+
+  const go = (tab: string) => {
+    haptic('select');
+    setActiveTab(tab);
+  };
 
   // Close the sheet whenever navigation happens from anywhere (a dashboard
   // card, a deep link) so it can't be left hanging over the new screen.
@@ -116,16 +133,18 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
                 {MORE_TABS.map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
+                  const count = unreadByTab[tab.id] ?? 0;
                   return (
                     <button
                       key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`flex min-h-[72px] flex-col items-center justify-center gap-2 rounded-2xl border p-2 transition-all active:scale-95 ${
+                      onClick={() => go(tab.id)}
+                      className={`relative flex min-h-[72px] flex-col items-center justify-center gap-2 rounded-2xl border p-2 transition-all active:scale-95 ${
                         isActive
                           ? 'border-nothing-purple/40 bg-nothing-purple/15 text-white'
                           : 'border-white/5 bg-white/[0.03] text-white/60 hover:bg-white/[0.07]'
                       }`}
                     >
+                      {count > 0 && <Badge count={count} className="right-1.5 top-1.5" />}
                       <Icon size={20} />
                       <span className="text-[11px] tracking-wide">{tab.label}</span>
                     </button>
@@ -139,7 +158,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
 
       {/* Quick-log action, kept out of the bar so logging never costs two taps. */}
       <button
-        onClick={() => setActiveTab('track')}
+        onClick={() => go('track')}
         aria-label="Log an entry"
         className={`fixed right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-2xl transition-all active:scale-90 ${
           activeTab === 'track'
@@ -161,13 +180,18 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
               key={tab.id}
               tab={tab}
               isActive={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              count={unreadByTab[tab.id] ?? 0}
+              onClick={() => go(tab.id)}
             />
           ))}
           <NavButton
             tab={{ id: 'more', icon: MoreHorizontal, label: 'More' }}
             isActive={moreIsActive || moreOpen}
-            onClick={() => setMoreOpen((v) => !v)}
+            count={moreUnread}
+            onClick={() => {
+              haptic('select');
+              setMoreOpen((v) => !v);
+            }}
           />
         </div>
       </nav>
@@ -175,16 +199,26 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
   );
 };
 
-const NavButton: React.FC<{ tab: TabDef; isActive: boolean; onClick: () => void }> = ({
-  tab,
-  isActive,
-  onClick,
-}) => {
+const Badge: React.FC<{ count: number; className?: string }> = ({ count, className = '' }) => (
+  <span
+    className={`absolute z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-nothing-purple px-1 text-[9px] font-medium leading-none text-white shadow-[0_0_8px_rgba(168,85,247,0.7)] ${className}`}
+  >
+    {count > 9 ? '9+' : count}
+  </span>
+);
+
+const NavButton: React.FC<{
+  tab: TabDef;
+  isActive: boolean;
+  count: number;
+  onClick: () => void;
+}> = ({ tab, isActive, count, onClick }) => {
   const Icon = tab.icon;
   return (
     <button
       onClick={onClick}
       aria-current={isActive ? 'page' : undefined}
+      aria-label={count > 0 ? `${tab.label}, ${count} unread` : tab.label}
       /* min-h/min-w keep every target at or above the 44px touch minimum. */
       className={`relative flex min-h-[52px] min-w-[56px] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-1.5 transition-colors ${
         isActive ? 'text-white' : 'text-white/40'
@@ -197,6 +231,7 @@ const NavButton: React.FC<{ tab: TabDef; isActive: boolean; onClick: () => void 
           transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
         />
       )}
+      {count > 0 && <Badge count={count} className="right-2 top-1" />}
       <Icon size={19} className="relative" />
       <span className="relative text-[10px] leading-none tracking-wide">{tab.label}</span>
     </button>

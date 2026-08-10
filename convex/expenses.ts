@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, QueryCtx } from "./_generated/server";
 import { requireUserId } from "./authHelpers";
+import { notifyUser } from "./notify";
 
 function personName(user: Doc<"users"> | null) {
   return user?.name || user?.email?.split("@")[0] || "Your partner";
@@ -59,13 +60,27 @@ export const add = mutation({
       throw new Error("Split ratio must be between 0 and 100");
     }
     if (!args.category.trim()) throw new Error("Category can't be empty");
-    return await ctx.db.insert("expenses", {
+    const id = await ctx.db.insert("expenses", {
       ...args,
       category: args.category.trim(),
       payerId: userId,
       settled: false,
       spentAt: args.spentAt ?? Date.now(),
     });
+
+    const partner = await partnerOf(ctx, userId);
+    if (partner) {
+      const payer = await ctx.db.get(userId);
+      const owed = Math.round(args.amount * (1 - args.splitRatio / 100) * 100) / 100;
+      await notifyUser(ctx, {
+        userId: partner._id,
+        kind: "expense",
+        title: `${personName(payer)} added an expense`,
+        body: `${args.category.trim()} · you owe ${args.currency} ${owed.toFixed(2)}`,
+        tab: "split",
+      });
+    }
+    return id;
   },
 });
 
@@ -187,6 +202,16 @@ export const settleUp = mutation({
     for (const expense of unsettled) {
       await ctx.db.patch(expense._id, { settled: true, settledAt: now });
     }
+
+    const me = await ctx.db.get(userId);
+    await notifyUser(ctx, {
+      userId: partner._id,
+      kind: "expense",
+      title: "All settled up",
+      body: `${personName(me)} marked ${args.currency} ${Math.abs(net).toFixed(2)} as settled`,
+      tab: "split",
+    });
+
     return { amount: Math.abs(net), currency: args.currency };
   },
 });

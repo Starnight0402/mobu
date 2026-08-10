@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { displayName, requireUser, requireUserId } from "./authHelpers";
+import { notifyUser, partnerOf } from "./notify";
 
 export const list = query({
   args: {},
@@ -39,7 +40,7 @@ export const checkIn = mutation({
   args: { lat: v.number(), lng: v.number(), place: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    return await ctx.db.insert("tracking", {
+    const id = await ctx.db.insert("tracking", {
       type: "location",
       value: 1,
       category: args.place ?? "Check-in",
@@ -47,6 +48,18 @@ export const checkIn = mutation({
       lng: args.lng,
       user: displayName(user),
     });
+
+    const partner = await partnerOf(ctx, user._id);
+    if (partner) {
+      await notifyUser(ctx, {
+        userId: partner._id,
+        kind: "checkin",
+        title: `${displayName(user)} checked in`,
+        body: args.place ?? "Shared their location",
+        tab: "map",
+      });
+    }
+    return id;
   },
 });
 

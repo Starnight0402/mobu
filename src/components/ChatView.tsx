@@ -5,6 +5,7 @@ import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
 import { compressImage } from '../lib/image';
 import { useLightbox } from './Lightbox';
+import { haptic } from '../lib/haptics';
 import { Send, Image as ImageIcon, Mic, Square, Loader2, Play, Pause } from 'lucide-react';
 
 export const ChatView: React.FC = () => {
@@ -46,6 +47,7 @@ export const ChatView: React.FC = () => {
     try {
       await sendMessage({ text: text.trim() });
       setText('');
+      haptic('tap');
     } finally {
       setSending(false);
     }
@@ -85,6 +87,7 @@ export const ChatView: React.FC = () => {
       recorder.start();
       mediaRecorderRef.current = recorder;
       setRecording(true);
+      haptic('select');
     } catch (err) {
       console.error('Microphone access denied', err);
     }
@@ -96,6 +99,7 @@ export const ChatView: React.FC = () => {
   };
 
   const toggleHeart = (id: Id<'messages'>, current?: string | null) => {
+    haptic('success');
     react({ id, reaction: current === '❤️' ? undefined : '❤️' });
   };
 
