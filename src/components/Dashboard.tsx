@@ -311,7 +311,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                           src: x.imageUrl as string,
                           alt: x.title,
                           caption: x.title,
-                          subcaption: new Date(x._creationTime).getFullYear().toString(),
+                          subcaption: new Date(x.memoryDate ?? x._creationTime).getFullYear().toString(),
                         })),
                       i,
                     )
@@ -322,7 +322,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                   <img src={m.imageUrl} alt={m.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </button>
                 <p className="text-xs font-medium truncate">{m.title}</p>
-                <p className="text-[9px] text-white/40">{new Date(m._creationTime).getFullYear()}</p>
+                <p className="text-[9px] text-white/40">{new Date(m.memoryDate ?? m._creationTime).getFullYear()}</p>
               </div>
             ))}
           </div>

@@ -10,13 +10,15 @@ export const TimelineView: React.FC = () => {
   const memories = useQuery(api.memories.list) ?? [];
   const { openGallery } = useLightbox();
 
+  const dateOf = (m: Memory) => m.memoryDate ?? m._creationTime;
+
   const photos = memories
     .filter((m) => !!m.imageUrl)
     .map((m) => ({
       src: m.imageUrl as string,
       alt: m.title,
       caption: m.title,
-      subcaption: m.location ?? new Date(m._creationTime).toLocaleDateString(),
+      subcaption: m.location ?? new Date(dateOf(m)).toLocaleDateString(),
     }));
 
   const getIcon = (category: string) => {
@@ -30,11 +32,15 @@ export const TimelineView: React.FC = () => {
   };
 
   const groupedByYear = memories.reduce((acc, memory) => {
-    const year = new Date(memory._creationTime).getFullYear();
+    const year = new Date(dateOf(memory)).getFullYear();
     if (!acc[year]) acc[year] = [];
     acc[year].push(memory);
     return acc;
   }, {} as Record<number, Memory[]>);
+
+  for (const year of Object.keys(groupedByYear)) {
+    groupedByYear[Number(year)].sort((a, b) => dateOf(b) - dateOf(a));
+  }
 
   const years = Object.keys(groupedByYear).sort((a, b) => parseInt(b) - parseInt(a));
 
@@ -73,7 +79,7 @@ export const TimelineView: React.FC = () => {
                       <div>
                         <h3 className="text-lg font-medium">{memory.title}</h3>
                         <p className="text-[10px] uppercase tracking-widest text-white/40 mt-1">
-                          {new Date(memory._creationTime).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
+                          {new Date(dateOf(memory)).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
                         </p>
                       </div>
                       {memory.location && (

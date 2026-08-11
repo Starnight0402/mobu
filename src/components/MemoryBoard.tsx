@@ -64,6 +64,14 @@ const SHADOW_MAP: Record<string, string> = {
 
 type MemoryFormState = Partial<Memory> & { _id?: Id<'memories'> };
 
+// <input type="datetime-local"> needs "YYYY-MM-DDTHH:mm" in the *local*
+// timezone — toISOString() would shift it to UTC and silently move the date.
+function toDatetimeLocalValue(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export const MemoryBoard: React.FC = () => {
   const memories = useQuery(api.memories.list) ?? [];
   const createMemory = useMutation(api.memories.create);
@@ -161,6 +169,7 @@ export const MemoryBoard: React.FC = () => {
       location: formData.location,
       lat: formData.lat,
       lng: formData.lng,
+      memoryDate: formData.memoryDate ?? Date.now(),
       cardWidth: formData.cardWidth || 220,
       cardHeight: formData.cardHeight || 280,
       textSize: formData.textSize || 14,
@@ -203,6 +212,7 @@ export const MemoryBoard: React.FC = () => {
       imageUrl: '',
       category: 'photo',
       location: '',
+      memoryDate: Date.now(),
       cardWidth: 220,
       cardHeight: 280,
       textSize: 14,
@@ -231,7 +241,9 @@ export const MemoryBoard: React.FC = () => {
   const { nodes, edges, fitScale } = useMemo(() => {
     // Chronological, so index — and therefore position — is stable for every
     // existing memory when a new one is added.
-    const ordered = [...memories].sort((a, b) => a._creationTime - b._creationTime);
+    const ordered = [...memories].sort(
+      (a, b) => (a.memoryDate ?? a._creationTime) - (b.memoryDate ?? b._creationTime),
+    );
 
     const placed: Node[] = ordered.map((memory, i) => {
       const id = memory._id;
@@ -318,6 +330,19 @@ export const MemoryBoard: React.FC = () => {
           onChange={e => setFormData({...formData, description: e.target.value})}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 h-24 resize-none"
         />
+      </div>
+      <div>
+        <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Date</label>
+        <input
+          type="datetime-local"
+          value={toDatetimeLocalValue(formData.memoryDate ?? formData._creationTime ?? Date.now())}
+          onChange={e => {
+            const ms = e.target.valueAsNumber;
+            if (!Number.isNaN(ms)) setFormData({ ...formData, memoryDate: ms });
+          }}
+          className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 scheme-dark"
+        />
+        <p className="text-[9px] text-white/30 mt-1">Defaults to upload time — set it to when the memory actually happened.</p>
       </div>
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Media (Image URL or Upload)</label>
@@ -641,7 +666,7 @@ export const MemoryBoard: React.FC = () => {
                       <foreignObject x={midX - 40} y={midY - 10} width="80" height="20" className="overflow-visible">
                         <div className="flex justify-center">
                           <span className="bg-black/80 text-white/60 text-[8px] px-2 py-1 rounded-full border border-white/10 backdrop-blur-md whitespace-nowrap">
-                            {new Date(edge.source.memory._creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            {new Date(edge.source.memory.memoryDate ?? edge.source.memory._creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                           </span>
                         </div>
                       </foreignObject>
@@ -794,8 +819,10 @@ export const MemoryBoard: React.FC = () => {
                         <p className="text-sm text-white/60 leading-relaxed">{selectedMemory?.description}</p>
                       </div>
                       <div className="pt-8 border-t border-white/10 mt-8">
-                        <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Connected Date</p>
-                        <p className="text-sm font-mono text-white/80">{selectedMemory && new Date(selectedMemory._creationTime).toLocaleString()}</p>
+                        <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Date</p>
+                        <p className="text-sm font-mono text-white/80">
+                          {selectedMemory && new Date(selectedMemory.memoryDate ?? selectedMemory._creationTime).toLocaleString()}
+                        </p>
                       </div>
                     </div>
                   )}

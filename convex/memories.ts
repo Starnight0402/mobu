@@ -21,6 +21,7 @@ const memoryFields = {
   location: v.optional(v.string()),
   lat: v.optional(v.number()),
   lng: v.optional(v.number()),
+  memoryDate: v.optional(v.number()),
   cardWidth: v.optional(v.number()),
   cardHeight: v.optional(v.number()),
   textSize: v.optional(v.number()),
@@ -43,6 +44,7 @@ interface MemoryInput {
   location?: string;
   lat?: number;
   lng?: number;
+  memoryDate?: number;
   cardWidth?: number;
   cardHeight?: number;
   textSize?: number;
@@ -103,7 +105,7 @@ export const onThisDay = query({
     const today = new Date();
     const memories = await ctx.db.query("memories").collect();
     const matches = memories.filter((m) => {
-      const d = new Date(m._creationTime);
+      const d = new Date(m.memoryDate ?? m._creationTime);
       return (
         d.getMonth() === today.getMonth() &&
         d.getDate() === today.getDate() &&

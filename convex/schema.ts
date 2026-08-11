@@ -41,6 +41,9 @@ export default defineSchema({
     location: v.optional(v.string()),
     lat: v.optional(v.number()),
     lng: v.optional(v.number()),
+    // When the memory actually happened, editable independently of
+    // _creationTime (which is just when the row was inserted/uploaded).
+    memoryDate: v.optional(v.number()),
     // Persisted MemoryBoard layout position (Phase 5 fixes the current
     // Math.random()-on-every-render layout in MemoryBoard.tsx).
     positionX: v.optional(v.number()),
