@@ -228,7 +228,11 @@ export const ChatView: React.FC = () => {
           onChange={(e) => setText(e.target.value)}
           placeholder="Message…"
           disabled={sending || recording}
-          className="nothing-input flex-1 text-sm"
+          /* min-w-0: flex items default to min-width:auto, which refuses to
+             shrink below the placeholder/value's natural width — on Android
+             that width can exceed the row and shove the send button off
+             the visible screen. */
+          className="nothing-input min-w-0 flex-1 text-sm"
         />
         <button
           type="submit"

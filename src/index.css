@@ -12,6 +12,15 @@
 }
 
 @layer base {
+  /* Android's WebView "font boosting" inflates text size based on column-width
+     heuristics independent of any CSS font-size, which read as the whole app
+     being randomly zoomed in and pushed flex rows (like the chat composer)
+     wide enough to overflow. This opts every element out of that inflation. */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-black text-white font-sans antialiased overflow-x-hidden;
   }

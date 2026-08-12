@@ -58,7 +58,15 @@ export async function getCallMedia(): Promise<{ stream: MediaStream; hasVideo: b
   } catch (err) {
     const name = err instanceof DOMException ? err.name : '';
     if (name === 'NotAllowedError' || name === 'SecurityError') {
-      throw new Error('Camera and microphone permission was denied. Allow access and try again.');
+      // Android grants camera/mic as two independent OS permissions, so a
+      // combined request can be denied when only one of the two was
+      // actually refused — retry audio-only before giving up on the call.
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        return { stream, hasVideo: false };
+      } catch {
+        throw new Error('Camera and microphone permission was denied. Allow access and try again.');
+      }
     }
     // No camera, or it's held by another app — an audio call still beats none.
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
