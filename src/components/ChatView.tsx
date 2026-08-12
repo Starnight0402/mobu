@@ -6,11 +6,13 @@ import { Id } from '../../convex/_generated/dataModel';
 import { compressImage } from '../lib/image';
 import { useLightbox } from './Lightbox';
 import { haptic } from '../lib/haptics';
+import { Avatar, CoupleAvatars } from './Avatar';
 import { Send, Image as ImageIcon, Mic, Square, Loader2, Play, Pause } from 'lucide-react';
 
 export const ChatView: React.FC = () => {
   const messages = useQuery(api.messages.list) ?? [];
   const currentUser = useQuery(api.users.current);
+  const partner = useQuery(api.users.partner);
   const sendMessage = useMutation(api.messages.send);
   const markRead = useMutation(api.messages.markRead);
   const react = useMutation(api.messages.react);
@@ -122,9 +124,12 @@ export const ChatView: React.FC = () => {
     /* dvh, not vh: on mobile Safari/Chrome the address bar collapses on
        scroll and a vh-sized column pushed the composer under the viewport. */
     <div className="flex flex-col h-[calc(100dvh-11rem)]">
-      <header className="space-y-1 mb-4">
-        <h1 className="text-4xl font-medium tracking-tight dot-matrix">Chat</h1>
-        <p className="text-white/40 text-[10px] uppercase tracking-widest">Just the two of you</p>
+      <header className="flex items-end justify-between mb-4">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-medium tracking-tight dot-matrix">Chat</h1>
+          <p className="text-white/40 text-[10px] uppercase tracking-widest">Just the two of you</p>
+        </div>
+        <CoupleAvatars size={30} />
       </header>
 
       <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
@@ -136,7 +141,8 @@ export const ChatView: React.FC = () => {
         {messages.map((m) => {
           const isMe = m.senderId === currentUser?._id;
           return (
-            <div key={m._id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+            <div key={m._id} className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
+              {!isMe && <Avatar name={partner?.name} avatarUrl={partner?.avatarUrl} size={22} />}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}

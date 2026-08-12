@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { KIND_ICONS, useNotifications } from './NotificationProvider';
 import { haptic, hapticsSupported } from '../lib/haptics';
+import { Avatar, CoupleAvatars } from './Avatar';
 import { Bell, BellOff, CheckCheck, BellRing } from 'lucide-react';
 
 function relativeTime(ms: number) {
@@ -23,6 +24,7 @@ export const NotificationsView: React.FC<{ onNavigate: (tab: string) => void }> 
 }) => {
   const notifications = useQuery(api.notifications.list) ?? [];
   const markAllRead = useMutation(api.notifications.markAllRead);
+  const partner = useQuery(api.users.partner);
   const { permission, deviceRegistered, enable, unreadTotal } = useNotifications();
 
   const [error, setError] = React.useState<string | null>(null);
@@ -47,6 +49,8 @@ export const NotificationsView: React.FC<{ onNavigate: (tab: string) => void }> 
             {unreadTotal > 0 ? `${unreadTotal} unread` : 'All caught up'}
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          <CoupleAvatars size={30} />
         {notifications.length > 0 && (
           <button
             onClick={() => {
@@ -58,6 +62,7 @@ export const NotificationsView: React.FC<{ onNavigate: (tab: string) => void }> 
             <CheckCheck size={14} /> Read all
           </button>
         )}
+        </div>
       </header>
 
       {permission === 'unsupported' ? (
@@ -132,12 +137,15 @@ export const NotificationsView: React.FC<{ onNavigate: (tab: string) => void }> 
                   unread ? 'glass border-nothing-purple/20' : 'glass-dark hover:bg-white/[0.04]'
                 }`}
               >
-                <div
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                    unread ? 'bg-nothing-purple/15' : 'bg-white/5'
-                  }`}
-                >
-                  <Icon size={17} className={unread ? 'text-nothing-purple' : 'text-white/40'} />
+                <div className="relative h-11 w-11 shrink-0">
+                  <Avatar name={partner?.name} avatarUrl={partner?.avatarUrl} size={44} />
+                  <div
+                    className={`absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full ring-2 ring-black ${
+                      unread ? 'bg-nothing-purple' : 'bg-nothing-gray'
+                    }`}
+                  >
+                    <Icon size={11} className={unread ? 'text-white' : 'text-white/50'} />
+                  </div>
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className={`truncate text-sm ${unread ? 'font-medium' : 'text-white/70'}`}>

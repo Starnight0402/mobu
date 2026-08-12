@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
 import { formatMoney } from '../lib/currency';
+import { Avatar, CoupleAvatars } from './Avatar';
 import {
   Search,
   Wallet,
@@ -77,6 +78,16 @@ export const LogsView: React.FC = () => {
   const feed = (useQuery(api.tracking.feed, {}) ?? []) as LogEntry[];
   const removeTracking = useMutation(api.tracking.remove);
   const removeExpense = useMutation(api.expenses.remove);
+  const me = useQuery(api.users.current);
+  const partner = useQuery(api.users.partner);
+
+  // tracking entries store the logger's display name, not a userId, so
+  // avatars are matched by name against the app's exactly-two users.
+  const avatarFor = (userName: string) => {
+    if (me && userName === me.name) return me.avatarUrl;
+    if (partner && userName === partner.name) return partner.avatarUrl;
+    return null;
+  };
 
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [personFilter, setPersonFilter] = useState<string | null>(null);
@@ -123,11 +134,14 @@ export const LogsView: React.FC = () => {
 
   return (
     <div className="space-y-5 pb-32">
-      <header className="space-y-1">
-        <h1 className="text-4xl font-medium tracking-tight dot-matrix">Logs</h1>
-        <p className="text-white/40 text-[10px] uppercase tracking-widest">
-          {feed.length} entries · everything you've both tracked
-        </p>
+      <header className="flex items-end justify-between">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-medium tracking-tight dot-matrix">Logs</h1>
+          <p className="text-white/40 text-[10px] uppercase tracking-widest">
+            {feed.length} entries · everything you've both tracked
+          </p>
+        </div>
+        <CoupleAvatars size={30} />
       </header>
 
       <div className="relative">
@@ -196,8 +210,16 @@ export const LogsView: React.FC = () => {
                     onClick={() => setSelected(entry)}
                     className="glass-dark flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-white/[0.04]"
                   >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/5">
-                      <Icon size={17} className={meta.tint} />
+                    <div className="relative h-11 w-11 shrink-0">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/5">
+                        <Icon size={17} className={meta.tint} />
+                      </div>
+                      <Avatar
+                        name={entry.user}
+                        avatarUrl={avatarFor(entry.user)}
+                        size={18}
+                        className="absolute -bottom-1 -right-1 ring-2 ring-black"
+                      />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">

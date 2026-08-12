@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { motion } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { WidgetConfig, WidgetSize } from '../types';
 import { TogetherCalendar } from './TogetherCalendar';
 import { useLightbox } from './Lightbox';
+import { CoupleAvatars } from './Avatar';
 import {
   Wallet,
   Smile,
@@ -17,6 +18,26 @@ import {
   Maximize2,
   Flame,
 } from 'lucide-react';
+
+function usePrefersReducedMotion() {
+  const [reduced] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+  return reduced;
+}
+
+// Cycles a single "lit" index through a set of that size, one at a time —
+// drives the memories widget's black-and-white-to-colour reveal so it feels
+// alive instead of a flat static grayscale grid.
+function useCycleIndex(length: number, intervalMs: number, paused: boolean) {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (paused || length <= 1) return;
+    const id = setInterval(() => setIndex((i) => (i + 1) % length), intervalMs);
+    return () => clearInterval(id);
+  }, [length, intervalMs, paused]);
+  return index;
+}
 
 const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: 'calendar', size: 'small', order: 1 },
@@ -47,6 +68,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const saveWidgets = useMutation(api.widgets.saveAll);
   const balance = useQuery(api.expenses.balance);
   const { openGallery } = useLightbox();
+
+  const reducedMotion = usePrefersReducedMotion();
+  const memoryCycleIndex = useCycleIndex(memories.length || 1, 2600, reducedMotion || memories.length <= 1);
 
   const memoryPhotos = memories
     .filter((m) => !!m.imageUrl)
@@ -131,24 +155,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               <span className="text-[8px] font-mono text-white/20">{stats?.totalMemories} Total</span>
             </div>
             <div className={`grid gap-2 ${widget.size === 'small' ? 'grid-cols-1' : widget.size === 'wide' ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              {memories.slice(0, widget.size === 'small' ? 1 : widget.size === 'large' ? 4 : 3).map((memory) => (
-                <button
-                  key={memory._id}
-                  type="button"
-                  onClick={() =>
-                    openGallery(memoryPhotos, memoryPhotos.findIndex((p) => p.src === memory.imageUrl))
-                  }
-                  className="aspect-square rounded-xl overflow-hidden glass border border-white/5"
-                  aria-label={`View ${memory.title}`}
-                >
-                  <img
-                    src={memory.imageUrl}
-                    alt={memory.title}
-                    className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500"
-                    referrerPolicy="no-referrer"
-                  />
-                </button>
-              ))}
+              {memories.slice(0, widget.size === 'small' ? 1 : widget.size === 'large' ? 4 : 3).map((memory, i, shown) => {
+                const isLit = reducedMotion || shown.length <= 1 || i === memoryCycleIndex % shown.length;
+                return (
+                  <button
+                    key={memory._id}
+                    type="button"
+                    onClick={() =>
+                      openGallery(memoryPhotos, memoryPhotos.findIndex((p) => p.src === memory.imageUrl))
+                    }
+                    className="aspect-square rounded-xl overflow-hidden glass border border-white/5"
+                    aria-label={`View ${memory.title}`}
+                  >
+                    <img
+                      src={memory.imageUrl}
+                      alt={memory.title}
+                      className={`w-full h-full object-cover transition-all duration-1400 ease-out hover:grayscale-0 ${
+                        isLit ? 'grayscale-0' : 'grayscale'
+                      }`}
+                      referrerPolicy="no-referrer"
+                    />
+                  </button>
+                );
+              })}
             </div>
           </motion.div>
         );
@@ -275,6 +304,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           <p className="text-white/40 text-[10px] uppercase tracking-widest">Intelligence Hub</p>
         </div>
         <div className="flex items-center gap-2">
+          <CoupleAvatars size={30} />
           {!!streak?.days && (
             <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400" title="Consecutive days you've both logged something">
               <Flame size={12} />

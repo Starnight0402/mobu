@@ -1,50 +1,17 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
-import { motion, AnimatePresence, useMotionValue, useSpring } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Memory, Id } from '../types';
 import { compressImage } from '../lib/image';
 import { reverseGeocode } from '../lib/geocode';
+import { SHADOW_MAP } from '../lib/memoryCardStyle';
 import { useLightbox } from './Lightbox';
 import { LocationPickerModal } from './LocationPickerModal';
+import { MemorySphereView, MemorySphereHandle } from './MemorySphereView';
 import { Plus, Maximize2, X, Edit2, Trash2, Upload, Save, Waypoints, LayoutGrid, MapPin, MapPinned, Loader2 } from 'lucide-react';
 
-// Deterministic hash so a memory's position in the web is stable across
-// reloads/re-renders regardless of array order — fixes the old
-// Math.random()-per-render layout that reshuffled every node on any save.
-function hashSeed(input: string): number {
-  let h = 0;
-  for (let i = 0; i < input.length; i++) {
-    h = (Math.imul(h, 31) + input.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
 const CATEGORIES: Memory['category'][] = ['photo', 'travel', 'food', 'milestone', 'event'];
-
-// Phyllotaxis (sunflower) placement: even coverage with no clustering, and
-// because it is driven by chronological index, adding a memory appends to the
-// outside instead of reshuffling everything already on the board.
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-const RING_SPACING = 210;
-// Below this the cards stop being recognisable, so we let the board overflow
-// and be panned instead of shrinking further.
-const MIN_FIT_SCALE = 0.4;
-
-interface Node {
-  id: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  memory: Memory;
-  rotation: number;
-}
-
-interface Edge {
-  source: Node;
-  target: Node;
-}
 
 const FONTS = [
   { label: 'Handwriting', value: "'Caveat', cursive" },
@@ -52,15 +19,6 @@ const FONTS = [
   { label: 'Serif', value: "'Playfair Display', serif" },
   { label: 'Monospace', value: "'JetBrains Mono', monospace" }
 ];
-
-const SHADOW_MAP: Record<string, string> = {
-  none: 'shadow-none',
-  sm: 'shadow-sm',
-  md: 'shadow-md',
-  lg: 'shadow-lg',
-  xl: 'shadow-xl',
-  '2xl': 'shadow-2xl'
-};
 
 type MemoryFormState = Partial<Memory> & { _id?: Id<'memories'> };
 
@@ -91,25 +49,7 @@ export const MemoryBoard: React.FC = () => {
   // Form State
   const [formData, setFormData] = useState<MemoryFormState>({});
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-
-  const springX = useSpring(x, { stiffness: 150, damping: 30 });
-  const springY = useSpring(y, { stiffness: 150, damping: 30 });
-
-  // The web layout is sized against real measured space rather than assumed
-  // desktop dimensions, so it has to re-run on rotate/resize.
-  const [container, setContainer] = useState({ w: 0, h: 0 });
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const measure = () => setContainer({ w: el.clientWidth, h: el.clientHeight });
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  const sphereRef = useRef<MemorySphereHandle>(null);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -234,83 +174,15 @@ export const MemoryBoard: React.FC = () => {
   };
 
   const reCenter = () => {
-    x.set(0);
-    y.set(0);
+    sphereRef.current?.recenter();
   };
 
-  const { nodes, edges, fitScale } = useMemo(() => {
-    // Chronological, so index — and therefore position — is stable for every
-    // existing memory when a new one is added.
-    const ordered = [...memories].sort(
-      (a, b) => (a.memoryDate ?? a._creationTime) - (b.memoryDate ?? b._creationTime),
-    );
-
-    const placed: Node[] = ordered.map((memory, i) => {
-      const id = memory._id;
-      const w = memory.cardWidth || 220;
-      const h = memory.cardHeight || 280;
-      const angle = i * GOLDEN_ANGLE;
-      const radius = RING_SPACING * Math.sqrt(i);
-      const jitterX = (hashSeed(id + 'x') % 40) - 20;
-      const jitterY = (hashSeed(id + 'y') % 40) - 20;
-      return {
-        id,
-        // Cards are absolutely positioned from their top-left, so offset by
-        // half the card to make `radius` measure centre-to-centre.
-        x: Math.cos(angle) * radius + jitterX - w / 2,
-        y: Math.sin(angle) * radius + jitterY - h / 2,
-        w,
-        h,
-        memory,
-        rotation: (hashSeed(id + 'rot') % 16) - 8,
-      };
-    });
-
-    const generatedEdges: Edge[] = [];
-    for (let i = 1; i < placed.length; i++) {
-      generatedEdges.push({ source: placed[i], target: placed[i - 1] });
-      // One extra deterministic strand for the web look. The old code picked
-      // this with Math.random(), so the web re-wired itself on every save.
-      if (i > 2) {
-        const target = hashSeed(placed[i].id + 'link') % (i - 1);
-        generatedEdges.push({ source: placed[i], target: placed[target] });
-      }
-    }
-
-    /*
-     * The old layout scattered cards 150–950px from a zero-size origin no
-     * matter how big the viewport was. On a 390px-wide phone that put nearly
-     * every card off-screen, and the distance-based opacity ramp faded the
-     * survivors to nothing — hence a board that looked empty. Now the cloud
-     * is measured and scaled down to fit whatever space it actually has.
-     */
-    let scale = 1;
-    if (placed.length > 0 && container.w > 0 && container.h > 0) {
-      const minX = Math.min(...placed.map((n) => n.x));
-      const maxX = Math.max(...placed.map((n) => n.x + n.w));
-      const minY = Math.min(...placed.map((n) => n.y));
-      const maxY = Math.max(...placed.map((n) => n.y + n.h));
-      const spreadX = Math.max(maxX - minX, 1);
-      const spreadY = Math.max(maxY - minY, 1);
-      const padding = 32;
-      scale = Math.min(
-        1,
-        (container.w - padding) / spreadX,
-        (container.h - padding) / spreadY,
-      );
-      scale = Math.max(scale, MIN_FIT_SCALE);
-
-      // Recentre the cloud on the container's midpoint.
-      const centreX = (minX + maxX) / 2;
-      const centreY = (minY + maxY) / 2;
-      for (const node of placed) {
-        node.x -= centreX;
-        node.y -= centreY;
-      }
-    }
-
-    return { nodes: placed, edges: generatedEdges, fitScale: scale };
-  }, [memories, container.w, container.h]);
+  // Chronological, so a card's angle on the sphere — and therefore its
+  // position — is stable for every existing memory when a new one is added.
+  const sortedMemories = useMemo(
+    () => [...memories].sort((a, b) => (a.memoryDate ?? a._creationTime) - (b.memoryDate ?? b._creationTime)),
+    [memories],
+  );
 
   const renderForm = () => (
     <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
@@ -553,17 +425,14 @@ export const MemoryBoard: React.FC = () => {
   );
 
   return (
-    <div
-      className="relative h-[calc(100dvh-11rem)] w-full overflow-hidden rounded-[2rem] sm:rounded-[3rem] border border-white/5 bg-[#0a0a0a] backdrop-blur-sm"
-      ref={containerRef}
-    >
+    <div className="relative h-[calc(100dvh-11rem)] w-full overflow-hidden rounded-[2rem] sm:rounded-[3rem] border border-white/5 bg-[#0a0a0a] backdrop-blur-sm">
       <div className="absolute inset-0 pointer-events-none opacity-20"
            style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
 
       <div className="absolute top-5 left-5 sm:top-8 sm:left-8 z-10 space-y-1 pointer-events-none">
-        <h1 className="text-xl sm:text-2xl font-medium tracking-tight dot-matrix">{viewMode === 'web' ? 'Memory Web' : 'Gallery'}</h1>
+        <h1 className="text-xl sm:text-2xl font-medium tracking-tight dot-matrix">{viewMode === 'web' ? 'Hall of Memories' : 'Gallery'}</h1>
         <p className="text-white/40 text-[10px] uppercase tracking-widest">
-          {viewMode === 'web' ? 'Drag to explore' : `${memories.length} memories`}
+          {viewMode === 'web' ? 'Drag to look around' : `${memories.length} memories`}
         </p>
       </div>
 
@@ -638,53 +507,7 @@ export const MemoryBoard: React.FC = () => {
       )}
 
       {viewMode === 'web' && (
-        <motion.div
-          drag
-          dragConstraints={{ left: -2000, right: 2000, top: -2000, bottom: 2000 }}
-          style={{ x: springX, y: springY }}
-          className="absolute inset-0 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none"
-        >
-          {/* Zero-size anchor at the container's centre; the cloud is centred
-              on it by the layout pass and then scaled to fit. */}
-          <div className="relative" style={{ width: 0, height: 0 }}>
-            <div
-              className="relative"
-              style={{ width: 0, height: 0, transform: `scale(${fitScale})` }}
-            >
-              <svg className="absolute inset-0 overflow-visible pointer-events-none">
-                {edges.map((edge, i) => {
-                  const x1 = edge.source.x + edge.source.w / 2;
-                  const y1 = edge.source.y + edge.source.h / 2;
-                  const x2 = edge.target.x + edge.target.w / 2;
-                  const y2 = edge.target.y + edge.target.h / 2;
-                  const midX = (x1 + x2) / 2;
-                  const midY = (y1 + y2) / 2;
-
-                  return (
-                    <g key={`edge-${i}`}>
-                      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#ffffff" strokeOpacity="0.15" strokeWidth="2" />
-                      <foreignObject x={midX - 40} y={midY - 10} width="80" height="20" className="overflow-visible">
-                        <div className="flex justify-center">
-                          <span className="bg-black/80 text-white/60 text-[8px] px-2 py-1 rounded-full border border-white/10 backdrop-blur-md whitespace-nowrap">
-                            {new Date(edge.source.memory.memoryDate ?? edge.source.memory._creationTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                          </span>
-                        </div>
-                      </foreignObject>
-                    </g>
-                  );
-                })}
-              </svg>
-
-              {nodes.map((node) => (
-                <MemoryCard
-                  key={node.id}
-                  node={node}
-                  onClick={() => setSelectedMemory(node.memory)}
-                />
-              ))}
-            </div>
-          </div>
-        </motion.div>
+        <MemorySphereView ref={sphereRef} memories={sortedMemories} onSelect={setSelectedMemory} />
       )}
 
       {viewMode === 'web' && memories.length === 0 && (
@@ -842,90 +665,5 @@ export const MemoryBoard: React.FC = () => {
         />
       )}
     </div>
-  );
-};
-
-interface MemoryCardProps {
-  node: Node;
-  onClick: () => void;
-}
-
-const MemoryCard: React.FC<MemoryCardProps> = ({ node, onClick }) => {
-  const w = node.w;
-  const h = node.h;
-  const textSize = node.memory.textSize || 14;
-  const fontFamily = node.memory.fontFamily || "'Caveat', cursive";
-  const textColor = node.memory.textColor || '#000000';
-  const bgColor = node.memory.bgColor || '#f8f8f8';
-  const borderStyle = node.memory.borderStyle || 'none';
-  const borderWidth = node.memory.borderWidth || 0;
-  const borderColor = node.memory.borderColor || '#000000';
-  const shadowEffect = node.memory.shadowEffect || 'xl';
-  const bgImageOverlay = node.memory.bgImageOverlay || '';
-
-  /*
-   * There used to be a distance-from-centre ramp here that faded cards to
-   * opacity 0 past 1800px. Combined with the old oversized scatter it was the
-   * reason the board rendered blank — every card was born outside the fade.
-   * The layout now guarantees cards land inside the viewport, so they simply
-   * stay visible.
-   */
-  return (
-    <motion.div
-      style={{
-        position: 'absolute',
-        left: node.x,
-        top: node.y,
-        width: w,
-        height: h,
-        rotate: node.rotation,
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      className="group cursor-pointer"
-    >
-      <div
-        className={`w-full h-full p-3 pb-12 rounded-sm ${SHADOW_MAP[shadowEffect] || 'shadow-xl'} flex flex-col transition-transform duration-300 group-hover:scale-105 group-hover:z-50 relative`}
-        style={{
-          backgroundColor: bgColor,
-          borderStyle: borderStyle,
-          borderWidth: `${borderWidth}px`,
-          borderColor: borderColor,
-          backgroundImage: bgImageOverlay ? `url(${bgImageOverlay})` : 'none',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundBlendMode: bgImageOverlay ? 'overlay' : 'normal'
-        }}
-      >
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-red-500 shadow-md border border-red-700 z-10">
-          <div className="absolute inset-1 rounded-full bg-white/30" />
-        </div>
-
-        <div className="flex-1 w-full bg-black/5 overflow-hidden relative">
-          <img
-            src={node.memory.imageUrl}
-            alt={node.memory.title}
-            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
-        </div>
-
-        <div className="absolute bottom-0 left-0 right-0 h-12 flex items-center justify-center px-4">
-          <p
-            className="truncate w-full text-center"
-            style={{
-              fontFamily,
-              color: textColor,
-              fontSize: `${textSize}px`
-            }}
-          >
-            {node.memory.title}
-          </p>
-        </div>
-      </div>
-    </motion.div>
   );
 };

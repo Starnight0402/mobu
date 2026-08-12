@@ -1,10 +1,40 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { motion } from 'motion/react';
 import { Star, Plane, Utensils, Image as ImageIcon, Calendar } from 'lucide-react';
 import { Memory } from '../types';
 import { useLightbox } from './Lightbox';
+import { CoupleAvatars } from './Avatar';
+
+// The photo colours in as it scrolls into view, and fades back to
+// black-and-white once it scrolls past — a light/hover trigger doesn't work
+// on touch devices, so this uses actual on-screen presence instead.
+const ScrollColorImage: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className }) => {
+  const ref = useRef<HTMLImageElement>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting && entry.intersectionRatio > 0.35),
+      { threshold: [0, 0.35, 0.6, 1] },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <img
+      ref={ref}
+      src={src}
+      alt={alt}
+      referrerPolicy="no-referrer"
+      className={`${className ?? ''} transition-all duration-700 ease-out ${inView ? 'grayscale-0' : 'grayscale'}`}
+    />
+  );
+};
 
 export const TimelineView: React.FC = () => {
   const memories = useQuery(api.memories.list) ?? [];
@@ -46,9 +76,12 @@ export const TimelineView: React.FC = () => {
 
   return (
     <div className="space-y-12 pb-32">
-      <header className="space-y-2">
-        <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">Timeline</h1>
-        <p className="text-white/40 text-sm uppercase tracking-widest">Our shared narrative</p>
+      <header className="flex items-end justify-between">
+        <div className="space-y-2">
+          <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">Timeline</h1>
+          <p className="text-white/40 text-sm uppercase tracking-widest">Our shared narrative</p>
+        </div>
+        <CoupleAvatars size={30} />
       </header>
 
       <div className="relative border-l border-white/10 ml-4 pl-8 space-y-16">
@@ -95,11 +128,10 @@ export const TimelineView: React.FC = () => {
                         className="block w-full aspect-video rounded-xl overflow-hidden"
                         aria-label={`View ${memory.title}`}
                       >
-                        <img
+                        <ScrollColorImage
                           src={memory.imageUrl}
                           alt={memory.title}
-                          className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700"
-                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover group-hover:grayscale-0"
                         />
                       </button>
                     )}

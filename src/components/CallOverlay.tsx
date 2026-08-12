@@ -4,6 +4,7 @@ import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, VideoOff as CamOff, Volu
 import { useCall } from './CallProvider';
 import { haptic, startRepeatingHaptic } from '../lib/haptics';
 import { startRingtone } from '../lib/ringtone';
+import { Avatar } from './Avatar';
 
 /**
  * Attaches a MediaStream once the element actually exists.
@@ -45,21 +46,6 @@ const VideoSurface: React.FC<{
     />
   );
 };
-
-const Avatar: React.FC<{ name: string; avatarUrl?: string | null; size?: number }> = ({ name, avatarUrl, size = 96 }) => (
-  <div
-    className="rounded-full bg-nothing-purple/15 border border-nothing-purple/30 flex items-center justify-center overflow-hidden"
-    style={{ width: size, height: size }}
-  >
-    {avatarUrl ? (
-      <img src={avatarUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-    ) : (
-      <span className="font-medium text-nothing-purple" style={{ fontSize: size / 2.6 }}>
-        {name.trim().charAt(0).toUpperCase() || '?'}
-      </span>
-    )}
-  </div>
-);
 
 function useElapsed(active: boolean) {
   const [seconds, setSeconds] = useState(0);
