@@ -156,19 +156,23 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
         )}
       </AnimatePresence>
 
-      {/* Quick-log action, kept out of the bar so logging never costs two taps. */}
-      <button
-        onClick={() => go('track')}
-        aria-label="Log an entry"
-        className={`fixed right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-2xl transition-all active:scale-90 ${
-          activeTab === 'track'
-            ? 'bg-white text-black'
-            : 'bg-nothing-purple text-white hover:brightness-110'
-        }`}
-        style={{ bottom: 'max(6rem, calc(env(safe-area-inset-bottom) + 5rem))' }}
-      >
-        <Plus size={24} />
-      </button>
+      {/* Quick-log action, kept out of the bar so logging never costs two taps.
+          Hidden on Chat — it sits at the same right-4 offset as the composer's
+          send button and the two crowd each other right above the keyboard. */}
+      {activeTab !== 'chat' && (
+        <button
+          onClick={() => go('track')}
+          aria-label="Log an entry"
+          className={`fixed right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-2xl transition-all active:scale-90 ${
+            activeTab === 'track'
+              ? 'bg-white text-black'
+              : 'bg-nothing-purple text-white hover:brightness-110'
+          }`}
+          style={{ bottom: 'max(6rem, calc(env(safe-area-inset-bottom) + 5rem))' }}
+        >
+          <Plus size={24} />
+        </button>
+      )}
 
       <nav
         className="fixed left-0 right-0 z-50 px-3"

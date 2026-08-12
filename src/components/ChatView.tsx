@@ -26,9 +26,15 @@ export const ChatView: React.FC = () => {
   const chunksRef = useRef<Blob[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Opening the thread should land straight on the latest message, not
+  // visibly scroll there — only messages that arrive after that get an
+  // animated scroll.
+  const hasSnappedRef = useRef(false);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length === 0) return;
+    bottomRef.current?.scrollIntoView({ behavior: hasSnappedRef.current ? 'smooth' : 'auto' });
+    hasSnappedRef.current = true;
   }, [messages.length]);
 
   useEffect(() => {

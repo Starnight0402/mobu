@@ -82,34 +82,6 @@
     background-color: rgba(255, 255, 255, 0.04);
   }
 
-  /*
-   * Phone: iOS Safari zooms the whole page whenever you focus a form field
-   * whose text is under 16px, and then never zooms back out. Most inputs in
-   * this app are text-sm (14px), which made every tap on a message box or a
-   * tracking field punt you into a zoomed viewport. A 16px floor on the
-   * controls themselves is the only thing that suppresses it without
-   * disabling pinch-zoom for people who actually need it.
-   */
-  @media (max-width: 767px) {
-    input:not([type='range']):not([type='color']):not([type='checkbox']):not([type='radio']),
-    textarea,
-    select {
-      font-size: 16px;
-    }
-
-    /*
-     * The UI leans on sub-10px labels for its terminal look. That reads fine
-     * on a monitor and is genuinely illegible at arm's length on a phone, so
-     * the arbitrary-value type scale gets a floor on small screens. Done here
-     * rather than at ~200 call sites so the desktop look is untouched.
-     */
-    .text-\[6px\] { font-size: 10px; }
-    .text-\[7px\] { font-size: 10px; }
-    .text-\[8px\] { font-size: 11px; }
-    .text-\[9px\] { font-size: 11px; }
-    .text-\[10px\] { font-size: 12px; }
-  }
-
   /* Comfortable hit targets on touch devices — several icon buttons were
      under the 44px Apple/Android minimum. */
   @media (hover: none) and (pointer: coarse) {
@@ -119,6 +91,41 @@
       touch-action: manipulation;
     }
   }
+}
+
+/*
+ * Phone: iOS Safari zooms the whole page whenever you focus a form field
+ * whose text is under 16px, and then never zooms back out. Most inputs in
+ * this app are text-sm (14px), which made every tap on a message box or a
+ * tracking field punt you into a zoomed viewport. A 16px floor on the
+ * controls themselves is meant to suppress it without disabling pinch-zoom
+ * for people who actually need it.
+ *
+ * Deliberately unlayered (not inside @layer base): Tailwind puts text-sm /
+ * text-[Npx] utilities in @layer utilities, which always outranks
+ * @layer base regardless of selector specificity — so a same-layer version
+ * of this rule was silently losing to `text-sm` on every input in the app
+ * and the zoom kept happening. Unlayered CSS beats every @layer, so this
+ * actually wins now.
+ */
+@media (max-width: 767px) {
+  input:not([type='range']):not([type='color']):not([type='checkbox']):not([type='radio']),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /*
+   * The UI leans on sub-10px labels for its terminal look. That reads fine
+   * on a monitor and is genuinely illegible at arm's length on a phone, so
+   * the arbitrary-value type scale gets a floor on small screens. Done here
+   * rather than at ~200 call sites so the desktop look is untouched.
+   */
+  .text-\[6px\] { font-size: 10px; }
+  .text-\[7px\] { font-size: 10px; }
+  .text-\[8px\] { font-size: 11px; }
+  .text-\[9px\] { font-size: 11px; }
+  .text-\[10px\] { font-size: 12px; }
 }
 
 @layer components {
