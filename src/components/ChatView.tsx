@@ -136,7 +136,7 @@ export const ChatView: React.FC = () => {
         <CoupleAvatars size={30} />
       </header>
 
-      <div className="space-y-3 pr-1">
+      <div className="space-y-3 pr-1 pb-40">
         {messages.length === 0 && (
           <div className="flex min-h-[45dvh] items-center justify-center text-white/20 text-xs uppercase tracking-widest">
             Say hi 👋
@@ -194,54 +194,57 @@ export const ChatView: React.FC = () => {
         <div ref={bottomRef} />
       </div>
 
-      {/* Sticky, not height-derived: pinning this to a computed "100dvh minus
-          chrome" height broke across browser vs. WebView chrome sizing.
-          Sticky just holds it at a fixed offset above the nav bar once
-          scrolled content reaches it — no viewport-height math required. */}
-      <form
-        onSubmit={handleSend}
-        className="glass sticky z-20 mt-4 flex items-center gap-2 p-2"
+      {/* Fixed, not height-derived or sticky: pinning this to a computed
+          "100dvh minus chrome" height broke across browser vs. WebView
+          chrome sizing, and `sticky` doesn't reliably clear the last
+          message once you're scrolled to the true bottom of the page —
+          fixed always sits at the same viewport offset, and the message
+          list's own pb-40 reserves room for it to never overlap. */}
+      <div
+        className="fixed inset-x-0 z-20 px-4 sm:px-6"
         style={{ bottom: 'max(6rem, calc(env(safe-area-inset-bottom) + 5rem))' }}
       >
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImagePick} />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={sending || recording}
-          className="w-11 h-11 flex-shrink-0 rounded-full bg-white/5 hover:bg-white/10 text-white/60 flex items-center justify-center transition-colors disabled:opacity-40"
-        >
-          <ImageIcon size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={recording ? stopRecording : startRecording}
-          disabled={sending}
-          className={`w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 ${
-            recording ? 'bg-red-500 text-white animate-pulse' : 'bg-white/5 hover:bg-white/10 text-white/60'
-          }`}
-        >
-          {recording ? <Square size={14} /> : <Mic size={16} />}
-        </button>
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Message…"
-          disabled={sending || recording}
-          /* min-w-0: flex items default to min-width:auto, which refuses to
-             shrink below the placeholder/value's natural width — on Android
-             that width can exceed the row and shove the send button off
-             the visible screen. */
-          className="nothing-input min-w-0 flex-1 text-sm"
-        />
-        <button
-          type="submit"
-          disabled={sending || recording || !text.trim()}
-          className="w-11 h-11 flex-shrink-0 rounded-full bg-nothing-purple text-white flex items-center justify-center hover:brightness-110 active:scale-95 transition-all disabled:opacity-40"
-        >
-          {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-        </button>
-      </form>
+        <form onSubmit={handleSend} className="glass mx-auto flex max-w-4xl items-center gap-2 p-2">
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImagePick} />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending || recording}
+            className="w-11 h-11 flex-shrink-0 rounded-full bg-white/5 hover:bg-white/10 text-white/60 flex items-center justify-center transition-colors disabled:opacity-40"
+          >
+            <ImageIcon size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={recording ? stopRecording : startRecording}
+            disabled={sending}
+            className={`w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 ${
+              recording ? 'bg-red-500 text-white animate-pulse' : 'bg-white/5 hover:bg-white/10 text-white/60'
+            }`}
+          >
+            {recording ? <Square size={14} /> : <Mic size={16} />}
+          </button>
+          <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Message…"
+            disabled={sending || recording}
+            /* min-w-0: flex items default to min-width:auto, which refuses to
+               shrink below the placeholder/value's natural width — on Android
+               that width can exceed the row and shove the send button off
+               the visible screen. */
+            className="nothing-input min-w-0 flex-1 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={sending || recording || !text.trim()}
+            className="w-11 h-11 flex-shrink-0 rounded-full bg-nothing-purple text-white flex items-center justify-center hover:brightness-110 active:scale-95 transition-all disabled:opacity-40"
+          >
+            {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+          </button>
+        </form>
+      </div>
     </div>
   );
 };
