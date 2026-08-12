@@ -1,18 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useConvex } from 'convex/react';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { motion } from 'motion/react';
-import { Globe, DollarSign, Save, LogOut, User, Moon, Sun, Download, Smartphone, Bell, Vibrate } from 'lucide-react';
+import { Globe, DollarSign, Save, LogOut, User, Moon, Sun, Download, Smartphone, Bell, Vibrate, Camera, X, Loader2 } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { AppSettings } from '../types';
 import { useTheme } from '../hooks/useTheme';
 import { useNotifications } from './NotificationProvider';
 import { haptic, hapticsEnabled, hapticsSupported, setHapticsEnabled } from '../lib/haptics';
+import { compressImage } from '../lib/image';
 
 export const SettingsView: React.FC = () => {
   const remoteSettings = useQuery(api.settings.get);
   const saveSettings = useMutation(api.settings.save);
   const currentUser = useQuery(api.users.current);
+  const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const setAvatar = useMutation(api.users.setAvatar);
+  const removeAvatar = useMutation(api.users.removeAvatar);
   const { signOut } = useAuthActions();
   const { theme, toggleTheme } = useTheme();
   const convex = useConvex();
@@ -23,6 +27,33 @@ export const SettingsView: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setAvatarUploading(true);
+    try {
+      // Small and square-ish — a profile picture never needs to be more
+      // than a few hundred px across, so compress much harder than a memory photo.
+      const blob = await compressImage(file, 512, 0.8, 150 * 1024);
+      const uploadUrl = await generateUploadUrl();
+      const res = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type },
+        body: blob,
+      });
+      const { storageId } = await res.json();
+      await setAvatar({ storageId });
+      haptic('success');
+    } catch (err) {
+      console.error('Avatar upload failed', err);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   const {
     permission,
@@ -76,8 +107,45 @@ export const SettingsView: React.FC = () => {
       <div className="glass p-8 space-y-8">
         <div className="flex items-center justify-between pb-6 border-b border-white/5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-nothing-purple/10 border border-nothing-purple/20 flex items-center justify-center">
-              <User size={16} className="text-nothing-purple" />
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={avatarUploading}
+                className="group relative w-14 h-14 rounded-full bg-nothing-purple/10 border border-nothing-purple/20 flex items-center justify-center overflow-hidden disabled:opacity-60"
+                title="Change profile picture"
+              >
+                {currentUser?.avatarUrl ? (
+                  <img src={currentUser.avatarUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <User size={20} className="text-nothing-purple" />
+                )}
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {avatarUploading ? (
+                    <Loader2 size={16} className="text-white animate-spin" />
+                  ) : (
+                    <Camera size={16} className="text-white" />
+                  )}
+                </div>
+              </button>
+              {currentUser?.avatarUrl && !avatarUploading && (
+                <button
+                  type="button"
+                  onClick={() => removeAvatar()}
+                  title="Remove profile picture"
+                  className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center rounded-full bg-black border border-white/10 text-white/60 hover:text-red-400 hover:border-red-500/40 transition-colors"
+                >
+                  <X size={10} />
+                </button>
+              )}
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarPick}
+                disabled={avatarUploading}
+              />
             </div>
             <div>
               <p className="text-sm font-medium">{currentUser?.name}</p>

@@ -5,6 +5,22 @@ import { authTables } from "@convex-dev/auth/server";
 export default defineSchema({
   ...authTables,
 
+  // authTables.users only has a free-text `image` (used for OAuth avatar
+  // URLs). We override it with our own uploaded-photo storage reference,
+  // keeping every other built-in field/index identical so auth keeps working.
+  users: defineTable({
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    avatarStorageId: v.optional(v.id("_storage")),
+  })
+    .index("email", ["email"])
+    .index("phone", ["phone"]),
+
   // Phase 1: mirrors the existing SQLite `tracking` table for functional parity.
   // `user` stays a free-text label (matching the current 'Partner 1'/'Partner 2'
   // strings) until Phase 2 wires up real accounts and this becomes v.id("users").

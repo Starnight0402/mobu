@@ -39,8 +39,12 @@ export const CallView: React.FC = () => {
       )}
 
       <div className="glass flex flex-col items-center gap-6 p-10 text-center">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-nothing-purple/20 bg-nothing-purple/10">
-          <Phone size={28} className="text-nothing-purple" />
+        <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-nothing-purple/20 bg-nothing-purple/10">
+          {partner?.avatarUrl ? (
+            <img src={partner.avatarUrl} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <Phone size={28} className="text-nothing-purple" />
+          )}
         </div>
         <div>
           <p className="text-lg font-medium">{partner?.name || peerName}</p>

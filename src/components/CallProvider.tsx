@@ -19,6 +19,7 @@ export type ConnectionQuality = 'connecting' | 'good' | 'poor' | 'failed';
 interface CallContextValue {
   phase: CallPhase;
   peerName: string;
+  peerAvatarUrl: string | null;
   error: string | null;
   clearError: () => void;
   canCall: boolean;
@@ -423,6 +424,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const value: CallContextValue = {
     phase,
     peerName: call?.peerName || partner?.name || 'Your partner',
+    peerAvatarUrl: partner?.avatarUrl ?? null,
     error,
     clearError: () => setError(null),
     canCall: !!partner && !call,

@@ -46,14 +46,18 @@ const VideoSurface: React.FC<{
   );
 };
 
-const Avatar: React.FC<{ name: string; size?: number }> = ({ name, size = 96 }) => (
+const Avatar: React.FC<{ name: string; avatarUrl?: string | null; size?: number }> = ({ name, avatarUrl, size = 96 }) => (
   <div
-    className="rounded-full bg-nothing-purple/15 border border-nothing-purple/30 flex items-center justify-center"
+    className="rounded-full bg-nothing-purple/15 border border-nothing-purple/30 flex items-center justify-center overflow-hidden"
     style={{ width: size, height: size }}
   >
-    <span className="font-medium text-nothing-purple" style={{ fontSize: size / 2.6 }}>
-      {name.trim().charAt(0).toUpperCase() || '?'}
-    </span>
+    {avatarUrl ? (
+      <img src={avatarUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+    ) : (
+      <span className="font-medium text-nothing-purple" style={{ fontSize: size / 2.6 }}>
+        {name.trim().charAt(0).toUpperCase() || '?'}
+      </span>
+    )}
   </div>
 );
 
@@ -76,6 +80,7 @@ export const CallOverlay: React.FC = () => {
   const {
     phase,
     peerName,
+    peerAvatarUrl,
     localStream,
     remoteStream,
     muted,
@@ -121,7 +126,7 @@ export const CallOverlay: React.FC = () => {
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-5 bg-[#0a0a0a]">
-            <Avatar name={peerName} />
+            <Avatar name={peerName} avatarUrl={peerAvatarUrl} />
             <div className="text-center space-y-1">
               <p className="text-xl font-medium">{peerName}</p>
               <p className="text-[11px] uppercase tracking-widest text-white/40">
@@ -233,7 +238,7 @@ const ControlButton: React.FC<{
  * arrives over whatever screen you're on rather than only inside the Call tab.
  */
 export const IncomingCallSheet: React.FC = () => {
-  const { peerName, accept, decline } = useCall();
+  const { peerName, peerAvatarUrl, accept, decline } = useCall();
 
   // Ring and buzz until it's answered or declined — a silent visual is easy to
   // miss on a phone that's face-down in a pocket.
@@ -263,7 +268,7 @@ export const IncomingCallSheet: React.FC = () => {
             animate={{ scale: [1, 1.06, 1] }}
             transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
           >
-            <Avatar name={peerName} size={120} />
+            <Avatar name={peerName} avatarUrl={peerAvatarUrl} size={120} />
           </motion.div>
           <div className="space-y-2">
             <p className="text-2xl font-medium">{peerName}</p>

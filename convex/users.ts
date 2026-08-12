@@ -1,12 +1,43 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { Doc } from "./_generated/dataModel";
+import { mutation, query, QueryCtx } from "./_generated/server";
 import { requireUserId } from "./authHelpers";
+
+async function withAvatarUrl(ctx: QueryCtx, user: Doc<"users">) {
+  const avatarUrl = user.avatarStorageId ? await ctx.storage.getUrl(user.avatarStorageId) : null;
+  return { ...user, avatarUrl };
+}
 
 export const current = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    return await ctx.db.get(userId);
+    const user = await ctx.db.get(userId);
+    return user && (await withAvatarUrl(ctx, user));
+  },
+});
+
+export const setAvatar = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const user = await ctx.db.get(userId);
+    if (user?.avatarStorageId && user.avatarStorageId !== args.storageId) {
+      await ctx.storage.delete(user.avatarStorageId);
+    }
+    await ctx.db.patch(userId, { avatarStorageId: args.storageId });
+  },
+});
+
+export const removeAvatar = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const user = await ctx.db.get(userId);
+    if (user?.avatarStorageId) {
+      await ctx.storage.delete(user.avatarStorageId);
+    }
+    await ctx.db.patch(userId, { avatarStorageId: undefined });
   },
 });
 
@@ -28,6 +59,7 @@ export const partner = query({
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
     const all = await ctx.db.query("users").collect();
-    return all.find((u) => u._id !== userId) ?? null;
+    const other = all.find((u) => u._id !== userId);
+    return other ? await withAvatarUrl(ctx, other) : null;
   },
 });
