@@ -43,6 +43,9 @@ function clamp(v: number, a: number, b: number) {
 function easeOutCubic(t: number) {
   return 1 - Math.pow(1 - t, 3);
 }
+function formatCardDate(ms: number) {
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
+}
 
 export const MemorySphereView = forwardRef<MemorySphereHandle, MemorySphereViewProps>(
   ({ memories, onSelect }, ref) => {
@@ -375,7 +378,7 @@ const SphereCard: React.FC<{
       }}
     >
       <div
-        className={`w-full h-full p-2.5 pb-8 rounded-sm ${SHADOW_MAP[shadowEffect] || 'shadow-xl'} flex flex-col relative`}
+        className={`w-full h-full p-2.5 pb-11 rounded-sm ${SHADOW_MAP[shadowEffect] || 'shadow-xl'} flex flex-col relative`}
         style={{
           backgroundColor: bgColor,
           borderStyle,
@@ -399,12 +402,18 @@ const SphereCard: React.FC<{
             draggable={false}
           />
         </div>
-        <div className="absolute bottom-0 left-0 right-0 h-8 flex items-center justify-center px-3">
+        <div className="absolute bottom-0 left-0 right-0 h-11 flex flex-col items-center justify-center px-3 gap-0.5">
           <p
             className="truncate w-full text-center"
             style={{ fontFamily, color: textColor, fontSize: `${textSize}px` }}
           >
             {memory.title}
+          </p>
+          <p
+            className="truncate w-full text-center font-mono uppercase tracking-wide"
+            style={{ color: textColor, opacity: 0.6, fontSize: 9 }}
+          >
+            {formatCardDate(memory.memoryDate ?? memory._creationTime)}
           </p>
         </div>
       </div>
