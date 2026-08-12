@@ -9,8 +9,17 @@ import React, {
 } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { api } from '../../convex/_generated/api';
-import { currentSubscription, enablePush, disablePush, pushSupported, setAppBadge } from '../lib/push';
+import {
+  currentSubscription,
+  enablePush,
+  disablePush,
+  permissionState,
+  setAppBadge,
+  type SerializedSubscription,
+} from '../lib/push';
 import { haptic } from '../lib/haptics';
 import {
   Bell,
@@ -78,11 +87,11 @@ export const NotificationProvider: React.FC<{
   const unread = useQuery(api.notifications.unread);
   const subscribeMutation = useMutation(api.pushSubscriptions.subscribe);
   const unsubscribeMutation = useMutation(api.pushSubscriptions.unsubscribe);
+  const subscribeFcmMutation = useMutation(api.pushSubscriptions.subscribeFcm);
+  const unsubscribeFcmMutation = useMutation(api.pushSubscriptions.unsubscribeFcm);
   const markTabReadMutation = useMutation(api.notifications.markTabRead);
 
-  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
-    pushSupported ? Notification.permission : 'unsupported',
-  );
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
   const [deviceRegistered, setDeviceRegistered] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
@@ -97,39 +106,86 @@ export const NotificationProvider: React.FC<{
     setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), 6000);
   }, []);
 
+  // The device registers under whichever transport it subscribed with — a
+  // browser endpoint or a native FCM token — each backed by its own mutation.
+  const registerSubscription = useCallback(
+    (sub: SerializedSubscription) =>
+      sub.type === 'fcm'
+        ? subscribeFcmMutation({ token: sub.token, label: sub.label })
+        : subscribeMutation(sub),
+    [subscribeFcmMutation, subscribeMutation],
+  );
+
   /** Returns null on success, or a human-readable reason it didn't work. */
   const enable = useCallback(async (): Promise<string | null> => {
     try {
       const subscription = await enablePush();
-      await subscribeMutation(subscription);
+      await registerSubscription(subscription);
       setDeviceRegistered(true);
       haptic('success');
       return null;
     } catch (err) {
       return err instanceof Error ? err.message : 'Could not enable notifications.';
     } finally {
-      setPermission(pushSupported ? Notification.permission : 'unsupported');
+      setPermission(await permissionState());
     }
-  }, [subscribeMutation]);
+  }, [registerSubscription]);
 
   const disable = useCallback(async () => {
-    const endpoint = await disablePush();
-    if (endpoint) await unsubscribeMutation({ endpoint });
+    const existing = await disablePush();
+    if (existing) {
+      if (existing.type === 'fcm') await unsubscribeFcmMutation({ token: existing.token });
+      else await unsubscribeMutation({ endpoint: existing.endpoint });
+    }
     setDeviceRegistered(false);
-  }, [unsubscribeMutation]);
+  }, [unsubscribeMutation, unsubscribeFcmMutation]);
+
+  useEffect(() => {
+    void permissionState().then(setPermission);
+  }, []);
 
   // If permission was granted on a previous visit, re-register silently so a
-  // rotated endpoint or a cleared server row heals itself on next load.
+  // rotated endpoint/token or a cleared server row heals itself on next load.
   useEffect(() => {
-    if (!pushSupported || Notification.permission !== 'granted') return;
     void (async () => {
+      if ((await permissionState()) !== 'granted') return;
       const existing = await currentSubscription();
       if (existing) {
-        await subscribeMutation(existing).catch(() => {});
+        await registerSubscription(existing).catch(() => {});
         setDeviceRegistered(true);
       }
     })();
-  }, [subscribeMutation]);
+  }, [registerSubscription]);
+
+  // Native push (Android APK via FCM): foreground pushes become toasts, and
+  // tapping a system notification navigates the app.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const handles: Promise<{ remove: () => Promise<void> }>[] = [];
+
+    handles.push(
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        const data = (notification.data ?? {}) as { kind?: string; tab?: string };
+        if (data.kind === 'call') return;
+        toast({
+          kind: data.kind ?? 'message',
+          title: notification.title ?? '',
+          body: notification.body ?? '',
+          tab: data.tab ?? 'home',
+        });
+      }),
+    );
+    handles.push(
+      PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        const data = (action.notification.data ?? {}) as { tab?: string };
+        if (data.tab) onNavigate(data.tab);
+      }),
+    );
+
+    return () => {
+      for (const handle of handles) void handle.then((h) => h.remove());
+    };
+  }, [toast, onNavigate]);
 
   // Messages from the service worker: foreground pushes become toasts, and a
   // notification tap navigates the already-open tab.

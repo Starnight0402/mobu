@@ -127,9 +127,7 @@ export const ChatView: React.FC = () => {
     }));
 
   return (
-    /* dvh, not vh: on mobile Safari/Chrome the address bar collapses on
-       scroll and a vh-sized column pushed the composer under the viewport. */
-    <div className="flex flex-col h-[calc(100dvh-11rem)]">
+    <div className="flex flex-col">
       <header className="flex items-end justify-between mb-4">
         <div className="space-y-1">
           <h1 className="text-4xl font-medium tracking-tight dot-matrix">Chat</h1>
@@ -138,9 +136,9 @@ export const ChatView: React.FC = () => {
         <CoupleAvatars size={30} />
       </header>
 
-      <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+      <div className="space-y-3 pr-1">
         {messages.length === 0 && (
-          <div className="h-full flex items-center justify-center text-white/20 text-xs uppercase tracking-widest">
+          <div className="flex min-h-[45dvh] items-center justify-center text-white/20 text-xs uppercase tracking-widest">
             Say hi 👋
           </div>
         )}
@@ -196,7 +194,15 @@ export const ChatView: React.FC = () => {
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={handleSend} className="flex items-center gap-2 pt-4">
+      {/* Sticky, not height-derived: pinning this to a computed "100dvh minus
+          chrome" height broke across browser vs. WebView chrome sizing.
+          Sticky just holds it at a fixed offset above the nav bar once
+          scrolled content reaches it — no viewport-height math required. */}
+      <form
+        onSubmit={handleSend}
+        className="glass sticky z-20 mt-4 flex items-center gap-2 p-2"
+        style={{ bottom: 'max(6rem, calc(env(safe-area-inset-bottom) + 5rem))' }}
+      >
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImagePick} />
         <button
           type="button"

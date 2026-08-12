@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
+
 /*
  * VAPID public keys are not secrets — they ship in every client that
  * subscribes, and the matching private key (held only by the Convex backend)
@@ -10,11 +13,17 @@ const DEFAULT_VAPID_PUBLIC_KEY =
 export const VAPID_PUBLIC_KEY =
   (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) || DEFAULT_VAPID_PUBLIC_KEY;
 
-export const pushSupported =
+const isNative = Capacitor.isNativePlatform();
+
+const webPushSupported =
   typeof window !== 'undefined' &&
   'serviceWorker' in navigator &&
   'PushManager' in window &&
   'Notification' in window;
+
+// Native (Android APK): FCM, bridged through @capacitor/push-notifications.
+// Web/PWA: the browser's own Push API. Either counts as "supported".
+export const pushSupported = isNative || webPushSupported;
 
 /** base64url -> Uint8Array, the form PushManager.subscribe expects. */
 function urlBase64ToUint8Array(base64: string): Uint8Array {
@@ -34,12 +43,9 @@ function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
   return btoa(binary);
 }
 
-export interface SerializedSubscription {
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-  label: string;
-}
+export type SerializedSubscription =
+  | { type: 'web'; endpoint: string; p256dh: string; auth: string; label: string }
+  | { type: 'fcm'; token: string; label: string };
 
 function describeDevice(): string {
   const ua = navigator.userAgent;
@@ -52,11 +58,50 @@ function describeDevice(): string {
 
 function serialize(sub: PushSubscription): SerializedSubscription {
   return {
+    type: 'web',
     endpoint: sub.endpoint,
     p256dh: arrayBufferToBase64(sub.getKey('p256dh')),
     auth: arrayBufferToBase64(sub.getKey('auth')),
     label: describeDevice(),
   };
+}
+
+/** Current permission state, native and web unified. */
+export async function permissionState(): Promise<NotificationPermission | 'unsupported'> {
+  if (isNative) {
+    const status = await PushNotifications.checkPermissions();
+    if (status.receive === 'granted') return 'granted';
+    if (status.receive === 'denied') return 'denied';
+    return 'default';
+  }
+  if (!webPushSupported) return 'unsupported';
+  return Notification.permission;
+}
+
+// Remembered so disablePush/currentSubscription can act on it without a
+// plugin API to look up "the token I already have" on demand.
+let lastFcmToken: string | null = null;
+
+function registerFcm(): Promise<SerializedSubscription> {
+  return new Promise((resolve, reject) => {
+    void (async () => {
+      // addListener resolves to the handle asynchronously; both must be
+      // awaited before register() so a fast callback can never reference a
+      // not-yet-assigned handle.
+      const successHandle = await PushNotifications.addListener('registration', (token) => {
+        void successHandle.remove();
+        void errorHandle.remove();
+        lastFcmToken = token.value;
+        resolve({ type: 'fcm', token: token.value, label: describeDevice() });
+      });
+      const errorHandle = await PushNotifications.addListener('registrationError', (err) => {
+        void successHandle.remove();
+        void errorHandle.remove();
+        reject(new Error(err.error || 'Registration failed.'));
+      });
+      void PushNotifications.register();
+    })();
+  });
 }
 
 /**
@@ -66,8 +111,20 @@ function serialize(sub: PushSubscription): SerializedSubscription {
  */
 export async function enablePush(): Promise<SerializedSubscription> {
   if (!pushSupported) {
-    throw new Error('This browser does not support notifications.');
+    throw new Error('This platform does not support notifications.');
   }
+
+  if (isNative) {
+    let status = await PushNotifications.checkPermissions();
+    if (status.receive === 'prompt' || status.receive === 'prompt-with-rationale') {
+      status = await PushNotifications.requestPermissions();
+    }
+    if (status.receive !== 'granted') {
+      throw new Error('Permission was not granted.');
+    }
+    return registerFcm();
+  }
+
   if (!window.isSecureContext) {
     throw new Error('Notifications need HTTPS.');
   }
@@ -95,19 +152,33 @@ export async function enablePush(): Promise<SerializedSubscription> {
 }
 
 export async function currentSubscription(): Promise<SerializedSubscription | null> {
-  if (!pushSupported) return null;
+  if (isNative) {
+    if (lastFcmToken) return { type: 'fcm', token: lastFcmToken, label: describeDevice() };
+    const status = await PushNotifications.checkPermissions();
+    if (status.receive !== 'granted') return null;
+    try {
+      return await registerFcm();
+    } catch {
+      return null;
+    }
+  }
+  if (!webPushSupported) return null;
   const registration = await navigator.serviceWorker.ready;
   const existing = await registration.pushManager.getSubscription();
   return existing ? serialize(existing) : null;
 }
 
-export async function disablePush(): Promise<string | null> {
+export async function disablePush(): Promise<SerializedSubscription | null> {
   const existing = await currentSubscription();
   if (!existing) return null;
+  if (existing.type === 'fcm') {
+    lastFcmToken = null;
+    return existing;
+  }
   const registration = await navigator.serviceWorker.ready;
   const sub = await registration.pushManager.getSubscription();
   await sub?.unsubscribe();
-  return existing.endpoint;
+  return existing;
 }
 
 /** App-icon badge count. Chrome/Android only; a no-op elsewhere. */

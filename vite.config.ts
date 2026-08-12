@@ -6,7 +6,9 @@ import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(({mode, command}) => {
   const env = loadEnv(mode, '.', '');
-  const base = command === 'build' ? '/mobu/' : '/';
+  // Capacitor serves the built app from a local file/asset scheme, so it
+  // needs root-relative paths, not the GitHub Pages "/mobu/" subpath.
+  const base = command === 'build' && mode !== 'capacitor' ? '/mobu/' : '/';
   return {
     // GitHub Pages serves this project at /mobu/, not the domain root.
     base,

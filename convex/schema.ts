@@ -193,9 +193,12 @@ export default defineSchema({
   // prunes any that come back 404/410.
   pushSubscriptions: defineTable({
     userId: v.id("users"),
+    // Web push subscriptions key on `endpoint`; native FCM registrations key
+    // on `"fcm:" + token` so both share one row shape and one unique index.
     endpoint: v.string(),
-    p256dh: v.string(),
-    auth: v.string(),
+    p256dh: v.optional(v.string()),
+    auth: v.optional(v.string()),
+    fcmToken: v.optional(v.string()),
     label: v.optional(v.string()),
     lastSeenAt: v.number(),
   })

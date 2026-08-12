@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "815493716819",
+    "project_id": "mobu-208bd",
+    "storage_bucket": "mobu-208bd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:815493716819:android:95159e6fe365544f8cdfa6",
+        "android_client_info": {
+          "package_name": "com.mobu.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAOd58tRfFAkPSNt3h4oIp7y8WmMJ1felo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

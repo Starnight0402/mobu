@@ -14,6 +14,9 @@
   },
   "dependencies": {
     "@auth/core": "^0.41.3",
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/push-notifications": "^8.1.2",
     "@convex-dev/auth": "^0.0.94",
     "@google/genai": "^1.29.0",
     "@react-google-maps/api": "^2.20.8",
@@ -23,6 +26,7 @@
     "convex": "^1.43.0",
     "d3": "^7.9.0",
     "date-fns": "^4.1.0",
+    "google-auth-library": "^11.0.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.0",
@@ -34,6 +38,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@types/node": "^22.14.0",
     "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.21",

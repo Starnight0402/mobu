@@ -53,6 +53,52 @@ export const unsubscribe = mutation({
   },
 });
 
+/** Register (or refresh) this device's FCM token — the native push path. */
+export const subscribeFcm = mutation({
+  args: {
+    token: v.string(),
+    label: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const endpoint = `fcm:${args.token}`;
+    const existing = await ctx.db
+      .query("pushSubscriptions")
+      .withIndex("by_endpoint", (q) => q.eq("endpoint", endpoint))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        userId,
+        fcmToken: args.token,
+        label: args.label,
+        lastSeenAt: Date.now(),
+      });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("pushSubscriptions", {
+      userId,
+      endpoint,
+      fcmToken: args.token,
+      label: args.label,
+      lastSeenAt: Date.now(),
+    });
+  },
+});
+
+export const unsubscribeFcm = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    await requireUserId(ctx);
+    const existing = await ctx.db
+      .query("pushSubscriptions")
+      .withIndex("by_endpoint", (q) => q.eq("endpoint", `fcm:${args.token}`))
+      .unique();
+    if (existing) await ctx.db.delete(existing._id);
+  },
+});
+
 /** Whether the signed-in user has at least one live device registered. */
 export const status = query({
   args: {},
