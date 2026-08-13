@@ -130,6 +130,13 @@ export const SignInScreen: React.FC = () => {
     }
   };
 
+  // The emailed code is displayed digit-spaced for readability, so a
+  // copy-paste brings the spaces along — strip everything but digits rather
+  // than making people paste into a scratch pad first.
+  const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCode(e.target.value.replace(/\D/g, ''));
+  };
+
   const resetTransientState = () => {
     setError(null);
     setNotice(null);
@@ -342,7 +349,7 @@ export const SignInScreen: React.FC = () => {
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  onChange={handleCodeChange}
                   className="nothing-input w-full text-center text-lg tracking-[0.4em] font-mono"
                   placeholder="00000000"
                 />
@@ -454,7 +461,7 @@ export const SignInScreen: React.FC = () => {
                   autoComplete="one-time-code"
                   autoFocus
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  onChange={handleCodeChange}
                   className="nothing-input w-full text-center text-lg tracking-[0.4em] font-mono"
                   placeholder="00000000"
                 />
