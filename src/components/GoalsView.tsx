@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { motion, AnimatePresence } from 'motion/react';
-import { Utensils, Plane, Dumbbell, Coffee, Compass, Star, Plus, X, Check, Dices } from 'lucide-react';
+import { Utensils, Plane, Dumbbell, Coffee, Compass, Star, Plus, X, Check, Dices, Trash2 } from 'lucide-react';
 import { Goal } from '../types';
 
 const CATEGORIES = ['adventure', 'cooking', 'fitness', 'travel', 'relaxation'] as const;
@@ -11,6 +11,7 @@ export const GoalsView: React.FC = () => {
   const goals = useQuery(api.goals.list) ?? [];
   const createGoal = useMutation(api.goals.create);
   const updateProgress = useMutation(api.goals.updateProgress);
+  const removeGoal = useMutation(api.goals.remove);
 
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -49,6 +50,12 @@ export const GoalsView: React.FC = () => {
   const incrementGoal = async (goal: (typeof goals)[number]) => {
     if (goal.current >= goal.target) return;
     await updateProgress({ id: goal._id, current: goal.current + 1 });
+  };
+
+  const deleteGoal = async (goal: (typeof goals)[number]) => {
+    if (confirm(`Delete "${goal.title}"?`)) {
+      await removeGoal({ id: goal._id });
+    }
   };
 
   const addGoal = async () => {
@@ -103,7 +110,15 @@ export const GoalsView: React.FC = () => {
             <div className="absolute top-0 right-0 p-8 text-white/5 group-hover:text-nothing-purple/10 transition-colors">
               {getIcon(goal.category)}
             </div>
-            
+
+            <button
+              onClick={() => deleteGoal(goal)}
+              aria-label={`Delete ${goal.title}`}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-white/20 hover:bg-red-500/20 hover:text-red-400 transition-colors"
+            >
+              <Trash2 size={14} />
+            </button>
+
             <div className="space-y-2">
               <h3 className="text-xl font-medium tracking-tight pr-12">{goal.title}</h3>
               <p className="text-[10px] uppercase tracking-widest text-white/40">{goal.category}</p>

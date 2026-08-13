@@ -38,6 +38,16 @@ export const create = mutation({
   },
 });
 
+export const remove = mutation({
+  args: { id: v.id("goals") },
+  handler: async (ctx, args) => {
+    await requireUserId(ctx);
+    const goal = await ctx.db.get(args.id);
+    if (!goal) throw new Error("Goal not found");
+    await ctx.db.delete(args.id);
+  },
+});
+
 export const updateProgress = mutation({
   args: { id: v.id("goals"), current: v.number() },
   handler: async (ctx, args) => {
