@@ -1,4 +1,6 @@
 import { Email } from "@convex-dev/auth/providers/Email";
+import { ConvexError } from "convex/values";
+import { ALLOWED_EMAILS } from "./allowedEmails";
 import { otpEmailHtml, otpEmailText } from "./emailTemplate";
 
 /** 8 cryptographically random digits — not Math.random, this gates account access. */
@@ -8,19 +10,28 @@ function generateCode(): string {
   return Array.from(bytes, (b) => (b % 10).toString()).join("");
 }
 
-export const ResendOTPPasswordReset = Email({
-  id: "resend-otp-password-reset",
+/** Passwordless sign-in: email a code instead of checking a password. */
+export const ResendOTP = Email({
+  id: "resend-otp",
   maxAge: 60 * 20, // 20 minutes
   async generateVerificationToken() {
     return generateCode();
   },
   async sendVerificationRequest({ identifier: email, token }) {
+    const normalized = email.toLowerCase().trim();
+    // This runs before any account is created, so an unauthorized email
+    // never even gets a code sent — matching the Password provider's
+    // allowlist gate (see convex/auth.ts).
+    if (!ALLOWED_EMAILS.includes(normalized)) {
+      throw new ConvexError("This app is private. That email isn't authorized.");
+    }
+
     const apiKey = process.env.AUTH_RESEND_KEY;
     if (!apiKey) {
-      throw new Error("AUTH_RESEND_KEY is not set; cannot send password reset emails.");
+      throw new Error("AUTH_RESEND_KEY is not set; cannot send sign-in codes.");
     }
     const emailArgs = {
-      heading: "Reset your password",
+      heading: "Sign in to Mobu",
       subheading: "This code expires in 20 minutes.",
       code: token,
     };
@@ -32,14 +43,14 @@ export const ResendOTPPasswordReset = Email({
       },
       body: JSON.stringify({
         from: "Mobu <onboarding@resend.dev>",
-        to: [email],
-        subject: "Your Mobu password reset code",
+        to: [normalized],
+        subject: "Your Mobu sign-in code",
         html: otpEmailHtml(emailArgs),
         text: otpEmailText(emailArgs),
       }),
     });
     if (!res.ok) {
-      throw new Error(`Could not send password reset email: ${await res.text()}`);
+      throw new Error(`Could not send sign-in email: ${await res.text()}`);
     }
   },
 });

@@ -2,11 +2,8 @@ import { ConvexError } from "convex/values";
 import { convexAuth } from "@convex-dev/auth/server";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { ResendOTPPasswordReset } from "./ResendOTPPasswordReset";
-
-// The only two people allowed to have an account in this app. Enforced
-// server-side in the `profile` callback below, which runs on every
-// signUp/signIn/reset flow — not just hidden in the UI.
-const ALLOWED_EMAILS = ["amritanshuprasad1@gmail.com", "swati07rs@gmail.com"];
+import { ResendOTP } from "./ResendOTP";
+import { ALLOWED_EMAILS } from "./allowedEmails";
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
@@ -24,5 +21,6 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       },
       reset: ResendOTPPasswordReset,
     }),
+    ResendOTP,
   ],
 });

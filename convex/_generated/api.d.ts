@@ -8,13 +8,16 @@
  * @module
  */
 
+import type * as ResendOTP from "../ResendOTP.js";
 import type * as ResendOTPPasswordReset from "../ResendOTPPasswordReset.js";
+import type * as allowedEmails from "../allowedEmails.js";
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
 import type * as calls from "../calls.js";
 import type * as capsules from "../capsules.js";
 import type * as crons from "../crons.js";
 import type * as dataExport from "../dataExport.js";
+import type * as emailTemplate from "../emailTemplate.js";
 import type * as expenses from "../expenses.js";
 import type * as files from "../files.js";
 import type * as goals from "../goals.js";
@@ -40,13 +43,16 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  ResendOTP: typeof ResendOTP;
   ResendOTPPasswordReset: typeof ResendOTPPasswordReset;
+  allowedEmails: typeof allowedEmails;
   auth: typeof auth;
   authHelpers: typeof authHelpers;
   calls: typeof calls;
   capsules: typeof capsules;
   crons: typeof crons;
   dataExport: typeof dataExport;
+  emailTemplate: typeof emailTemplate;
   expenses: typeof expenses;
   files: typeof files;
   goals: typeof goals;
