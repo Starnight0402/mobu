@@ -22,6 +22,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useNotifications } from './NotificationProvider';
 import { haptic } from '../lib/haptics';
+import { useBackHandler } from '../lib/backButtonStack';
 
 interface NavigationProps {
   activeTab: string;
@@ -64,6 +65,8 @@ const MORE_TABS: TabDef[] = [
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
   const [moreOpen, setMoreOpen] = useState(false);
   const { unreadByTab } = useNotifications();
+
+  useBackHandler(moreOpen, () => setMoreOpen(false));
 
   const moreIsActive = MORE_TABS.some((t) => t.id === activeTab) && activeTab !== 'track';
 

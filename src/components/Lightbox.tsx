@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'motion/react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useBackHandler } from '../lib/backButtonStack';
 
 export interface LightboxImage {
   src: string;
@@ -82,6 +83,8 @@ const LightboxOverlay: React.FC<{
   const open = !!state;
   const count = state?.images.length ?? 0;
   const current = state ? state.images[state.index] : null;
+
+  useBackHandler(open, onClose);
 
   const step = useCallback(
     (delta: number) => {

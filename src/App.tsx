@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Authenticated, Unauthenticated, AuthLoading, useQuery } from 'convex/react';
 import { Navigation } from './components/Navigation';
+import { PullToRefresh } from './components/PullToRefresh';
+import { useAndroidBackButton } from './lib/useAndroidBackButton';
 import { Dashboard } from './components/Dashboard';
 import { TrackingForm } from './components/TrackingForm';
 import { MemoryBoard } from './components/MemoryBoard';
@@ -26,23 +28,25 @@ import { api } from '../convex/_generated/api';
 
 export default function App() {
   return (
-    <LightboxProvider>
-      <AuthLoading>
-        <div className="min-h-dvh flex items-center justify-center">
-          <div className="w-2 h-2 rounded-full bg-nothing-purple animate-pulse" />
-        </div>
-      </AuthLoading>
-      <Unauthenticated>
-        <SignInScreen />
-      </Unauthenticated>
-      {/* CallProvider lives above the tab switch so a call survives navigation
-          and the incoming-call sheet can appear from any screen. */}
-      <Authenticated>
-        <CallProvider>
-          <AuthenticatedApp />
-        </CallProvider>
-      </Authenticated>
-    </LightboxProvider>
+    <PullToRefresh>
+      <LightboxProvider>
+        <AuthLoading>
+          <div className="min-h-dvh flex items-center justify-center">
+            <div className="w-2 h-2 rounded-full bg-nothing-purple animate-pulse" />
+          </div>
+        </AuthLoading>
+        <Unauthenticated>
+          <SignInScreen />
+        </Unauthenticated>
+        {/* CallProvider lives above the tab switch so a call survives navigation
+            and the incoming-call sheet can appear from any screen. */}
+        <Authenticated>
+          <CallProvider>
+            <AuthenticatedApp />
+          </CallProvider>
+        </Authenticated>
+      </LightboxProvider>
+    </PullToRefresh>
   );
 }
 
@@ -126,6 +130,17 @@ function AppShell({
   useEffect(() => {
     markTabRead(activeTab);
   }, [activeTab, markTabRead]);
+
+  // Any open modal/sheet gets first refusal (see useBackHandler call sites);
+  // otherwise back goes to Home, and minimizes rather than exiting once
+  // already there.
+  useAndroidBackButton(
+    useCallback(() => {
+      if (activeTab === 'home') return false;
+      setActiveTab('home');
+      return true;
+    }, [activeTab, setActiveTab]),
+  );
 
   return (
     <div
