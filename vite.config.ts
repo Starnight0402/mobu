@@ -4,13 +4,12 @@ import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
 
-export default defineConfig(({mode, command}) => {
+export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
-  // Capacitor serves the built app from a local file/asset scheme, so it
-  // needs root-relative paths, not the GitHub Pages "/mobu/" subpath.
-  const base = command === 'build' && mode !== 'capacitor' ? '/mobu/' : '/';
+  // Served from the mobu.prismintelligence.in custom domain root (see
+  // public/CNAME) — no GitHub Pages "/mobu/" subpath to account for anymore.
+  const base = '/';
   return {
-    // GitHub Pages serves this project at /mobu/, not the domain root.
     base,
     plugins: [
       react(),

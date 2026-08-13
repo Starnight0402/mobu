@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
   // fallback — Capacitor doesn't serve `webDir` when `server.url` is set,
   // so the app needs a network connection to load at all.
   server: {
-    url: 'https://starnight0402.github.io/mobu/',
+    url: 'https://mobu.prismintelligence.in/',
     androidScheme: 'https',
   },
 };
