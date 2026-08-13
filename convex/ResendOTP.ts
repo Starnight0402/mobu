@@ -42,7 +42,7 @@ export const ResendOTP = Email({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Mobu <onboarding@resend.dev>",
+        from: "Mobu <mobu@prismintelligence.in>",
         to: [normalized],
         subject: "Your Mobu sign-in code",
         html: otpEmailHtml(emailArgs),

@@ -31,7 +31,7 @@ export const ResendOTPPasswordReset = Email({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Mobu <onboarding@resend.dev>",
+        from: "Mobu <mobu@prismintelligence.in>",
         to: [email],
         subject: "Your Mobu password reset code",
         html: otpEmailHtml(emailArgs),
