@@ -23,7 +23,11 @@ export const PullToRefresh: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     const onTouchStart = (e: TouchEvent) => {
-      if (window.scrollY > 0 || refreshingRef.current) {
+      const target = e.target as Element | null;
+      // Views with their own drag/pan gesture (the 3D Hall of Memories'
+      // sphere, most notably) opt out — a vertical drag there shouldn't
+      // double as a pull-to-refresh.
+      if (window.scrollY > 0 || refreshingRef.current || target?.closest('[data-no-pull-refresh]')) {
         startY.current = null;
         return;
       }

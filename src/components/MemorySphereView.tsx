@@ -307,7 +307,12 @@ export const MemorySphereView = forwardRef<MemorySphereHandle, MemorySphereViewP
     }, [placements]);
 
     return (
-      <div ref={stageRef} className="absolute inset-0 touch-none select-none" style={{ cursor: 'grab' }}>
+      <div
+        ref={stageRef}
+        data-no-pull-refresh
+        className="absolute inset-0 touch-none select-none"
+        style={{ cursor: 'grab' }}
+      >
         <div
           ref={worldRef}
           className="absolute inset-0"
