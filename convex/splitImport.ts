@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, MutationCtx } from "./_generated/server";
+import { internalMutation, mutation, MutationCtx } from "./_generated/server";
 import { requireUserId } from "./authHelpers";
 import { Id } from "./_generated/dataModel";
 
@@ -109,5 +109,24 @@ export const importCarryover = mutation({
         spentAt: Date.now(),
       });
     }
+  },
+});
+
+/**
+ * One-off reset for redoing an import from scratch. Internal rather than a
+ * client-callable mutation -- there's no UI for wiping every expense, this
+ * is meant to be run once via the CLI, not exposed as an in-app button.
+ */
+export const clearAll = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const expenses = await ctx.db.query("expenses").collect();
+    for (const e of expenses) {
+      if (e.receiptStorageId) await ctx.storage.delete(e.receiptStorageId);
+      await ctx.db.delete(e._id);
+    }
+    const settlements = await ctx.db.query("settlements").collect();
+    for (const s of settlements) await ctx.db.delete(s._id);
+    return { expenses: expenses.length, settlements: settlements.length };
   },
 });
