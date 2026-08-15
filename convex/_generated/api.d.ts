@@ -15,6 +15,7 @@ import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
 import type * as calls from "../calls.js";
 import type * as capsules from "../capsules.js";
+import type * as chatAnalysis from "../chatAnalysis.js";
 import type * as crons from "../crons.js";
 import type * as dataExport from "../dataExport.js";
 import type * as emailTemplate from "../emailTemplate.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   authHelpers: typeof authHelpers;
   calls: typeof calls;
   capsules: typeof capsules;
+  chatAnalysis: typeof chatAnalysis;
   crons: typeof crons;
   dataExport: typeof dataExport;
   emailTemplate: typeof emailTemplate;

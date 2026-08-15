@@ -2,6 +2,20 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
 
+// Shared by hand-logged `fights` and chat-detected `conflictEpisodes` so the
+// dashboard can pool both into one topic breakdown. Categories were derived
+// from themes actually present in the imported chat, not invented generically.
+const topicValidator = v.union(
+  v.literal("trust"), // third parties, secrecy, jealousy
+  v.literal("communication"), // how we talk / handle conflict itself
+  v.literal("attention"), // responsiveness, not texting back, feeling deprioritised
+  v.literal("family"), // parents, in-laws, marriage timeline
+  v.literal("money"), // career, income, providing
+  v.literal("plans"), // logistics, travel, scheduling
+  v.literal("distance"), // being apart, missing each other
+  v.literal("other"),
+);
+
 export default defineSchema({
   ...authTables,
 
@@ -242,7 +256,79 @@ export default defineSchema({
     resolution: v.optional(v.string()),
     fightDate: v.optional(v.number()),
     resolvedAt: v.optional(v.number()),
+    // Added with the dashboard: "what was it about" needs structure, not just
+    // free text, or the dashboard can't show recurring themes. All optional so
+    // rows written before this existed keep working.
+    topic: v.optional(topicValidator),
+    trigger: v.optional(v.string()),
+    channel: v.optional(
+      v.union(v.literal("text"), v.literal("call"), v.literal("in-person")),
+    ),
+    resolvedBy: v.optional(v.id("users")),
+    resolutionType: v.optional(
+      v.union(
+        v.literal("talked"),
+        v.literal("apology"),
+        v.literal("compromise"),
+        v.literal("faded"),
+      ),
+    ),
   }),
+
+  // Conflict episodes detected from the imported chat itself, rather than
+  // logged by hand. Two people rarely remember to log a fight while having
+  // one, so the chat is the more complete record -- these fill in everything
+  // that never made it into `fights`.
+  conflictEpisodes: defineTable({
+    importId: v.id("chatImports"),
+    date: v.string(), // YYYY-MM-DD
+    startedAt: v.number(),
+    endedAt: v.number(),
+    score: v.number(), // detector confidence/intensity
+    severity: v.number(), // 1-5, derived from score
+    topic: v.optional(topicValidator),
+    messageCount: v.number(),
+    // Who sent the first heavy message of the episode.
+    openedBy: v.optional(v.string()),
+    // Who sent the last repair/apology message, if any.
+    closedBy: v.optional(v.string()),
+    repaired: v.boolean(),
+    // Representative excerpts (sender + text), stored as JSON so the shape can
+    // evolve without a migration.
+    excerpts: v.string(),
+    // Chat-derived context: volume vs baseline, longest gap that day, etc.
+    context: v.string(),
+    // Set when this episode was matched to a hand-logged `fights` row.
+    linkedFightId: v.optional(v.id("fights")),
+  })
+    .index("by_import", ["importId"])
+    .index("by_import_and_date", ["importId", "date"]),
+
+  // One row per WhatsApp export upload. Append-only log; `stats` holds the
+  // whole computed dashboard payload as JSON (one blob per import, no
+  // independent lifecycle, so it lives here rather than its own table).
+  chatImports: defineTable({
+    requestedBy: v.id("users"),
+    status: v.union(v.literal("processing"), v.literal("done"), v.literal("error")),
+    fileName: v.optional(v.string()),
+    messageCount: v.optional(v.number()),
+    dateRangeStart: v.optional(v.number()),
+    dateRangeEnd: v.optional(v.number()),
+    error: v.optional(v.string()),
+    stats: v.optional(v.string()),
+  }),
+
+  // The parsed chat itself. WhatsApp exports are always full-history, so each
+  // import wipes and replaces these rather than appending.
+  chatMessages: defineTable({
+    importId: v.id("chatImports"),
+    sender: v.string(), // free-text name from the export
+    text: v.string(),
+    sentAt: v.number(),
+    isMedia: v.boolean(),
+  })
+    .index("by_sentAt", ["sentAt"])
+    .index("by_import", ["importId"]),
 
   // AI-generated relationship analysis, produced from an imported WhatsApp
   // export plus the couple's own app data. `result` is a JSON string (see
@@ -254,6 +340,7 @@ export default defineSchema({
     status: v.union(v.literal("processing"), v.literal("done"), v.literal("error")),
     result: v.optional(v.string()),
     error: v.optional(v.string()),
+    chatImportId: v.optional(v.id("chatImports")),
     messageCount: v.optional(v.number()),
     // True when the chat was too long to send in full and was evenly
     // sampled across the timeline instead.

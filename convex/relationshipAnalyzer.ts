@@ -1,39 +1,228 @@
 import { v } from "convex/values";
-import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireUserId } from "./authHelpers";
+import {
+  computeChatStats,
+  detectConflicts,
+  parseWhatsApp,
+  type ChatStats,
+  type ConflictEpisode,
+  type ParsedMessage,
+} from "./chatAnalysis";
 
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-// A chunk per Groq call; cap keeps very long (multi-year) exports to a
-// bounded number of calls instead of one per ~14k characters of chat.
-const MAX_CHUNKS = 20;
+// Convex mutations get ~1 second of execution time, which binds well before
+// the 16k-doc transaction ceiling does. 500 small inserts sits comfortably
+// inside it with room to spare.
+const INSERT_BATCH = 500;
+const DELETE_BATCH = 500;
+
+/* ------------------------------------------------------------------ *
+ * Queries
+ * ------------------------------------------------------------------ */
+
+export const latestImport = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireUserId(ctx);
+    const imports = await ctx.db.query("chatImports").order("desc").take(1);
+    const latest = imports[0];
+    if (!latest) return null;
+
+    const episodes =
+      latest.status === "done"
+        ? await ctx.db
+            .query("conflictEpisodes")
+            .withIndex("by_import", (q) => q.eq("importId", latest._id))
+            .collect()
+        : [];
+
+    return {
+      ...latest,
+      episodes: episodes
+        .sort((a, b) => b.startedAt - a.startedAt)
+        .map((e) => ({
+          ...e,
+          excerpts: JSON.parse(e.excerpts) as Array<{ sender: string; text: string; at: number }>,
+          context: JSON.parse(e.context) as ConflictEpisode["context"],
+        })),
+    };
+  },
+});
+
+export const importHistory = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireUserId(ctx);
+    return await ctx.db.query("chatImports").order("desc").take(8);
+  },
+});
 
 export const list = query({
   args: {},
   handler: async (ctx) => {
     await requireUserId(ctx);
-    return await ctx.db.query("relationshipAnalyses").order("desc").take(10);
+    return await ctx.db.query("relationshipAnalyses").order("desc").take(5);
   },
 });
 
+/* ------------------------------------------------------------------ *
+ * Kickoff
+ * ------------------------------------------------------------------ */
+
 export const startAnalysis = mutation({
-  args: { chatStorageId: v.id("_storage") },
+  args: { chatStorageId: v.id("_storage"), fileName: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
-    const id = await ctx.db.insert("relationshipAnalyses", {
+    const importId = await ctx.db.insert("chatImports", {
       requestedBy: userId,
       status: "processing",
+      fileName: args.fileName,
     });
-    // Scheduled rather than awaited so the client gets the row back
-    // immediately and watches it finish via the reactive `list` query,
-    // instead of holding one request open for however long Groq takes.
-    await ctx.scheduler.runAfter(0, internal.relationshipAnalyzer.runAnalysis, {
-      id,
+    // Scheduled rather than awaited: parsing 15k messages and calling Groq
+    // takes far longer than a mutation may run, and the client watches the row
+    // reactively anyway.
+    await ctx.scheduler.runAfter(0, internal.relationshipAnalyzer.runImport, {
+      importId,
       chatStorageId: args.chatStorageId,
     });
-    return id;
+    return importId;
   },
+});
+
+/* ------------------------------------------------------------------ *
+ * Internal helpers the action calls
+ * ------------------------------------------------------------------ */
+
+export const insertMessageBatch = internalMutation({
+  args: {
+    importId: v.id("chatImports"),
+    batch: v.array(
+      v.object({
+        sender: v.string(),
+        text: v.string(),
+        sentAt: v.number(),
+        isMedia: v.boolean(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    for (const m of args.batch) {
+      await ctx.db.insert("chatMessages", { importId: args.importId, ...m });
+    }
+  },
+});
+
+/**
+ * Deletes one page of chat messages, optionally scoped to a single import.
+ * Returns how many it removed so the action can loop until it's drained --
+ * paginating rather than collecting every id up front, which matters once a
+ * multi-year export pushes this past six figures.
+ */
+export const deleteMessagePage = internalMutation({
+  args: { importId: v.optional(v.id("chatImports")) },
+  handler: async (ctx, args) => {
+    const rows = args.importId
+      ? await ctx.db
+          .query("chatMessages")
+          .withIndex("by_import", (q) => q.eq("importId", args.importId!))
+          .take(DELETE_BATCH)
+      : await ctx.db.query("chatMessages").take(DELETE_BATCH);
+    for (const r of rows) await ctx.db.delete(r._id);
+    return rows.length;
+  },
+});
+
+export const deleteEpisodesFor = internalMutation({
+  args: { importId: v.optional(v.id("chatImports")) },
+  handler: async (ctx, args) => {
+    const rows = args.importId
+      ? await ctx.db
+          .query("conflictEpisodes")
+          .withIndex("by_import", (q) => q.eq("importId", args.importId!))
+          .collect()
+      : await ctx.db.query("conflictEpisodes").collect();
+    for (const r of rows) await ctx.db.delete(r._id);
+  },
+});
+
+export const saveEpisodes = internalMutation({
+  args: {
+    importId: v.id("chatImports"),
+    episodes: v.array(
+      v.object({
+        date: v.string(),
+        startedAt: v.number(),
+        endedAt: v.number(),
+        score: v.number(),
+        severity: v.number(),
+        topic: v.string(),
+        messageCount: v.number(),
+        openedBy: v.optional(v.string()),
+        closedBy: v.optional(v.string()),
+        repaired: v.boolean(),
+        excerpts: v.string(),
+        context: v.string(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    for (const e of args.episodes) {
+      await ctx.db.insert("conflictEpisodes", {
+        importId: args.importId,
+        ...e,
+        topic: e.topic as never,
+      });
+    }
+  },
+});
+
+export const finishImport = internalMutation({
+  args: {
+    importId: v.id("chatImports"),
+    status: v.union(v.literal("done"), v.literal("error")),
+    stats: v.optional(v.string()),
+    error: v.optional(v.string()),
+    messageCount: v.optional(v.number()),
+    dateRangeStart: v.optional(v.number()),
+    dateRangeEnd: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { importId, ...rest } = args;
+    await ctx.db.patch(importId, rest);
+  },
+});
+
+export const saveAnalysis = internalMutation({
+  args: {
+    importId: v.id("chatImports"),
+    requestedBy: v.id("users"),
+    status: v.union(v.literal("done"), v.literal("error")),
+    result: v.optional(v.string()),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("relationshipAnalyses", {
+      chatImportId: args.importId,
+      requestedBy: args.requestedBy,
+      status: args.status,
+      result: args.result,
+      error: args.error,
+    });
+  },
+});
+
+export const getImport = internalQuery({
+  args: { importId: v.id("chatImports") },
+  handler: async (ctx, args) => await ctx.db.get(args.importId),
 });
 
 export const getAppContext = internalQuery({
@@ -45,107 +234,137 @@ export const getAppContext = internalQuery({
     const fights = await ctx.db.query("fights").collect();
     const users = await ctx.db.query("users").collect();
     const moods = tracking.filter((t) => t.type === "mood");
-    const nameOf = (id: (typeof users)[number]["_id"] | undefined) =>
+    const nameOf = (id?: (typeof users)[number]["_id"]) =>
       users.find((u) => u._id === id)?.name || "unspecified";
 
     const lines: string[] = [];
     lines.push(`Memories logged: ${memories.length}`);
-    for (const m of memories.slice(-15)) {
-      lines.push(`- Memory: "${m.title}" (${m.category})${m.description ? " — " + m.description : ""}`);
+    for (const m of memories.slice(-10)) {
+      lines.push(`- Memory: "${m.title}" (${m.category})`);
     }
+    // Every list here is capped: this digest is now stacked with a stats
+    // summary and chat excerpts in a single prompt, and an uncapped loop is an
+    // easy way to quietly regrow a token problem.
     lines.push(`Goals: ${goals.length} (${goals.filter((g) => g.completed).length} completed)`);
-    for (const g of goals) {
-      lines.push(`- Goal: "${g.title}" [${g.category}] ${g.current}/${g.target}${g.completed ? " (done)" : ""}`);
+    for (const g of goals.slice(0, 10)) {
+      lines.push(`- Goal: "${g.title}" [${g.category}] ${g.current}/${g.target}`);
     }
     if (moods.length > 0) {
       const avg = moods.reduce((s, m) => s + m.value, 0) / moods.length;
       lines.push(`Average logged mood: ${avg.toFixed(1)}/10 across ${moods.length} entries`);
     }
-
-    // Fights are logged directly by the couple (not inferred from chat), so
-    // they're the most reliable signal the model gets for conflict patterns.
-    lines.push(`Fights logged: ${fights.length} (${fights.filter((f) => f.resolved).length} marked resolved)`);
-    for (const f of fights.slice(0, 30)) {
+    lines.push(
+      `Hand-logged fights: ${fights.length} (${fights.filter((f) => f.resolved).length} resolved)`,
+    );
+    for (const f of fights.slice(0, 15)) {
       const when = new Date(f.fightDate ?? f._creationTime).toISOString().slice(0, 10);
       lines.push(
-        `- Fight [${when}] severity ${f.severity}/5, initiated by ${nameOf(f.initiatedBy)}, ${
-          f.resolved ? `resolved (${f.resolution || "no note"})` : "unresolved"
-        }: ${f.description}`,
+        `- Fight [${when}] sev ${f.severity}/5${f.topic ? ` about ${f.topic}` : ""}, started by ${nameOf(f.initiatedBy)}, ${f.resolved ? "resolved" : "unresolved"}: ${f.description.slice(0, 120)}`,
       );
     }
     return lines.join("\n");
   },
 });
 
-export const saveResult = internalMutation({
-  args: {
-    id: v.id("relationshipAnalyses"),
-    status: v.union(v.literal("done"), v.literal("error")),
-    result: v.optional(v.string()),
-    error: v.optional(v.string()),
-    messageCount: v.optional(v.number()),
-    sampled: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, {
-      status: args.status,
-      result: args.result,
-      error: args.error,
-      messageCount: args.messageCount,
-      sampled: args.sampled,
-    });
-  },
-});
+/* ------------------------------------------------------------------ *
+ * The import pipeline
+ * ------------------------------------------------------------------ */
 
-export const runAnalysis = internalAction({
-  args: { id: v.id("relationshipAnalyses"), chatStorageId: v.id("_storage") },
+export const runImport = internalAction({
+  args: { importId: v.id("chatImports"), chatStorageId: v.id("_storage") },
   handler: async (ctx, args) => {
     try {
       const blob = await ctx.storage.get(args.chatStorageId);
       if (!blob) throw new Error("Uploaded chat file not found");
       const raw = await blob.text();
-      const messages = parseWhatsApp(raw);
+
+      const messages: ParsedMessage[] = parseWhatsApp(raw);
       if (messages.length === 0) {
         throw new Error(
-          "Couldn't find any WhatsApp messages in that file. In WhatsApp, use Chat > More > Export chat > Without Media, then upload the .txt file it produces.",
+          "No WhatsApp messages found in that file. In WhatsApp use Chat > More > Export chat > Without Media, then upload the .txt it produces.",
         );
       }
 
-      let chunks = chunkMessages(messages);
-      const sampled = chunks.length > MAX_CHUNKS;
-      if (sampled) chunks = sampleEvenly(chunks, MAX_CHUNKS);
+      // Everything is computed from the in-memory array before a single row is
+      // written, so the stats pass never pays for reading 15k rows back.
+      const stats: ChatStats = computeChatStats(messages);
+      const episodes: ConflictEpisode[] = detectConflicts(messages, stats);
 
-      const chunkSummaries = chunks.length === 1 ? chunks : await summarizeChunks(chunks);
+      // WhatsApp exports are always full-history, so an import replaces rather
+      // than appends.
+      await ctx.runMutation(internal.relationshipAnalyzer.deleteEpisodesFor, {});
+      let removed = 0;
+      do {
+        removed = await ctx.runMutation(internal.relationshipAnalyzer.deleteMessagePage, {});
+      } while (removed === DELETE_BATCH);
 
-      const appContext: string = await ctx.runQuery(internal.relationshipAnalyzer.getAppContext, {});
+      for (let i = 0; i < messages.length; i += INSERT_BATCH) {
+        await ctx.runMutation(internal.relationshipAnalyzer.insertMessageBatch, {
+          importId: args.importId,
+          batch: messages.slice(i, i + INSERT_BATCH),
+        });
+      }
 
-      const finalRaw = await callGroq(
-        [
-          {
-            role: "system",
-            content:
-              "You are a thoughtful, honest relationship analyst. Given chronological summaries of a couple's WhatsApp chat history plus data from their shared relationship-tracking app (including a log of fights they recorded themselves, with severity, who initiated, and resolution status), produce a warm but candid analysis grounded only in what's given. Respond with ONLY valid JSON, no markdown, matching exactly: " +
-              `{"overallScore": number, "headline": string, "strengths": string[], "growthAreas": string[], "communicationPatterns": string[], "conflictPatterns": string[], "trendsOverTime": string[], "suggestions": string[]}` +
-              " overallScore is 1-10. conflictPatterns should draw specifically on the logged fights (frequency, severity trend, who tends to initiate, how often they get resolved vs. linger) — say there's not enough data yet if fewer than 2 fights are logged. Each array holds 3-5 concise, specific, non-generic items grounded in the actual content given.",
-          },
-          {
-            role: "user",
-            content: `CHAT HISTORY SUMMARIES (chronological order):\n${chunkSummaries.join("\n\n---\n\n")}\n\nAPP DATA:\n${appContext}`,
-          },
-        ],
-        true,
-      );
-
-      await ctx.runMutation(internal.relationshipAnalyzer.saveResult, {
-        id: args.id,
-        status: "done",
-        result: finalRaw,
-        messageCount: messages.length,
-        sampled,
+      await ctx.runMutation(internal.relationshipAnalyzer.saveEpisodes, {
+        importId: args.importId,
+        episodes: episodes.map((e) => ({
+          date: e.date,
+          startedAt: e.startedAt,
+          endedAt: e.endedAt,
+          score: e.score,
+          severity: e.severity,
+          topic: e.topic,
+          messageCount: e.messageCount,
+          openedBy: e.openedBy,
+          closedBy: e.closedBy,
+          repaired: e.repaired,
+          excerpts: JSON.stringify(e.excerpts),
+          context: JSON.stringify(e.context),
+        })),
       });
+
+      await ctx.runMutation(internal.relationshipAnalyzer.finishImport, {
+        importId: args.importId,
+        status: "done",
+        stats: JSON.stringify(stats),
+        messageCount: messages.length,
+        dateRangeStart: stats.dateRange.start,
+        dateRangeEnd: stats.dateRange.end,
+      });
+
+      // The narrative is a bonus layer on top of real numbers -- if Groq is
+      // down or rate-limited, the dashboard is still fully populated, so this
+      // failing must not fail the import.
+      try {
+        await generateNarrative(ctx, args.importId, stats, episodes);
+      } catch (err) {
+        console.error("Narrative generation failed", (err as Error).message);
+        const imp = await ctx.runQuery(internal.relationshipAnalyzer.getImport, {
+          importId: args.importId,
+        });
+        if (imp) {
+          await ctx.runMutation(internal.relationshipAnalyzer.saveAnalysis, {
+            importId: args.importId,
+            requestedBy: imp.requestedBy,
+            status: "error",
+            error: (err as Error).message,
+          });
+        }
+      }
     } catch (err) {
-      await ctx.runMutation(internal.relationshipAnalyzer.saveResult, {
-        id: args.id,
+      // A failure partway through leaves orphaned rows that the next import's
+      // "replace everything" step wouldn't catch, so clean up after ourselves.
+      let removed = 0;
+      do {
+        removed = await ctx.runMutation(internal.relationshipAnalyzer.deleteMessagePage, {
+          importId: args.importId,
+        });
+      } while (removed === DELETE_BATCH);
+      await ctx.runMutation(internal.relationshipAnalyzer.deleteEpisodesFor, {
+        importId: args.importId,
+      });
+      await ctx.runMutation(internal.relationshipAnalyzer.finishImport, {
+        importId: args.importId,
         status: "error",
         error: (err as Error).message,
       });
@@ -153,43 +372,87 @@ export const runAnalysis = internalAction({
   },
 });
 
-async function summarizeChunks(chunks: string[]): Promise<string[]> {
-  // Sequential, not parallel: Groq's free tier caps at 12k tokens/minute
-  // *total*, so firing chunks concurrently blew straight through it. One at
-  // a time (with callGroq's own backoff as a safety net) keeps each run
-  // comfortably under that regardless of chunk count.
-  const results: string[] = [];
-  for (const chunk of chunks) {
-    const summary = await callGroq([
-      {
-        role: "system",
-        content:
-          "Summarize this segment of a couple's WhatsApp chat log in 4-6 short bullet points: dominant topics, emotional tone, any conflict or tension, affection shown, and notable plans/events. Be concrete and specific. Plain text bullets only, no markdown headers.",
-      },
-      { role: "user", content: chunk },
-    ]);
-    results.push(summary);
+async function generateNarrative(
+  ctx: { runQuery: any; runMutation: any },
+  importId: string,
+  stats: ChatStats,
+  episodes: ConflictEpisode[],
+) {
+  const appContext: string = await ctx.runQuery(internal.relationshipAnalyzer.getAppContext, {});
+  const imp = await ctx.runQuery(internal.relationshipAnalyzer.getImport, { importId });
+  if (!imp) return;
+
+  const [a, b] = stats.senders;
+  const digest: string[] = [];
+  digest.push(
+    `${stats.totalMessages} messages over ${stats.daysCovered} days (avg ${stats.avgPerDay}/day).`,
+  );
+  for (const s of stats.senders) {
+    const x = stats.bySender[s];
+    const r = stats.responseTimes[s];
+    digest.push(
+      `${s}: ${x.messages} msgs, ${x.words} words, avg length ${x.avgMessageLength} chars, ${(x.questionRate * 100).toFixed(1)}% questions, ${x.longMessages} long messages, replies avg ${r.avgMinutes}m (median ${r.medianMinutes}m), started ${stats.initiations[s]} conversations, ${stats.doubleTexts[s]} consecutive messages.`,
+    );
+    digest.push(`${s} top words: ${stats.topWords[s].map(([w, n]) => `${w}(${n})`).join(", ")}`);
   }
-  return results;
+  digest.push(
+    `Longest streak both texted: ${stats.streaks.longest} days (current ${stats.streaks.current}). Longest silence: ${stats.longestSilence.hours}h.`,
+  );
+
+  const topicCounts = new Map<string, number>();
+  for (const e of episodes) topicCounts.set(e.topic, (topicCounts.get(e.topic) ?? 0) + 1);
+  digest.push(
+    `\n${episodes.length} conflict episodes detected in the chat. By topic: ${[...topicCounts.entries()].map(([t, n]) => `${t} ${n}`).join(", ")}.`,
+  );
+  for (const e of episodes.slice(0, 8)) {
+    digest.push(
+      `- ${e.date} (${e.context.days}d, severity ${e.severity}/5, topic ${e.topic}, opened by ${e.openedBy ?? "?"}, ${e.repaired ? `repaired by ${e.closedBy}` : "no clear repair"}): ` +
+        e.excerpts
+          .slice(0, 3)
+          .map((x) => `${x.sender}: "${x.text.slice(0, 180)}"`)
+          .join(" | "),
+    );
+  }
+
+  const system =
+    "You are a perceptive, honest relationship analyst. You are given real computed statistics from a couple's WhatsApp history, real detected conflict episodes with verbatim excerpts, and data from their shared tracking app. " +
+    `The two people are named "${a}" and "${b}" -- use these exact names. ` +
+    "Ground every claim in the specific numbers or quotes given; cite the figure inline (e.g. \"replies in 4.7m vs 5.6m\"). Never invent events. Be warm but direct, and say the uncomfortable thing when the data supports it. " +
+    "Respond with ONLY valid JSON matching exactly: " +
+    `{"overallScore":number,"headline":string,"strengths":[{"point":string,"evidence":string}],"growthAreas":[{"point":string,"evidence":string}],"communicationPatterns":[{"point":string,"evidence":string}],"conflictPatterns":[{"point":string,"evidence":string}],"perPerson":{"<name>":{"behaviour":[string],"suggestions":[string]},"<other name>":{"behaviour":[string],"suggestions":[string]}},"together":[string]}` +
+    ` Use "${a}" and "${b}" as the two keys inside perPerson. ` +
+    "3-5 items per array. `evidence` is the specific stat or quote the point rests on, kept short. `behaviour` is 3-4 observations about how that person specifically shows up. `suggestions` is 2-3 concrete things that person could do differently.";
+
+  const content = await callGroq([
+    { role: "system", content: system },
+    {
+      role: "user",
+      content: `CHAT STATISTICS\n${digest.join("\n")}\n\nAPP DATA\n${appContext}`,
+    },
+  ]);
+
+  await ctx.runMutation(internal.relationshipAnalyzer.saveAnalysis, {
+    importId,
+    requestedBy: imp.requestedBy,
+    status: "done",
+    result: content,
+  });
 }
 
-async function callGroq(messages: { role: string; content: string }[], jsonMode = false): Promise<string> {
+async function callGroq(messages: { role: string; content: string }[]): Promise<string> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error("GROQ_API_KEY is not configured on the server");
 
-  const maxAttempts = 5;
+  const maxAttempts = 4;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const res = await fetch(GROQ_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: GROQ_MODEL,
         messages,
-        temperature: 0.4,
-        ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+        temperature: 0.5,
+        response_format: { type: "json_object" },
       }),
     });
 
@@ -201,73 +464,14 @@ async function callGroq(messages: { role: string; content: string }[], jsonMode 
     }
 
     const text = await res.text();
-    // 429 = rate limited; Groq's error body includes "try again in Xs", so
-    // honor that instead of guessing. Everything else fails immediately.
     if (res.status === 429 && attempt < maxAttempts) {
-      const waitMatch = text.match(/try again in ([\d.]+)s/i);
-      const waitMs = waitMatch ? Math.ceil(parseFloat(waitMatch[1]) * 1000) + 750 : attempt * 5000;
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      const wait = text.match(/try again in ([\d.]+)s/i);
+      await new Promise((r) =>
+        setTimeout(r, wait ? Math.ceil(parseFloat(wait[1]) * 1000) + 750 : attempt * 4000),
+      );
       continue;
     }
-    throw new Error(`Groq API error ${res.status}: ${text.slice(0, 300)}`);
+    throw new Error(`Groq API error ${res.status}: ${text.slice(0, 200)}`);
   }
-  throw new Error("Groq API rate limit persisted after retries");
-}
-
-interface ParsedMessage {
-  date: string;
-  time: string;
-  sender: string;
-  text: string;
-}
-
-// Matches both Android ("12/4/24, 9:41 PM - Name: text") and iOS
-// ("[12/4/24, 9:41:02 PM] Name: text") WhatsApp export line formats.
-const WHATSAPP_LINE_RE =
-  /^\[?(\d{1,2}\/\d{1,2}\/\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[APap][Mm])?)\]?\s*-?\s*([^:]+):\s(.*)$/;
-
-function parseWhatsApp(raw: string): ParsedMessage[] {
-  const lines = raw.split(/\r?\n/);
-  const messages: ParsedMessage[] = [];
-  for (const line of lines) {
-    const cleaned = line.replace(/‎/g, "");
-    const m = cleaned.match(WHATSAPP_LINE_RE);
-    if (m) {
-      messages.push({ date: m[1], time: m[2], sender: m[3].trim(), text: m[4] });
-    } else if (messages.length > 0 && cleaned.trim()) {
-      // Continuation of a multi-line message (no timestamp prefix).
-      messages[messages.length - 1].text += "\n" + cleaned;
-    }
-  }
-  return messages;
-}
-
-function chunkMessages(messages: ParsedMessage[], maxChars = 6000): string[] {
-  const chunks: string[] = [];
-  let current: string[] = [];
-  let len = 0;
-  for (const m of messages) {
-    const line = `[${m.date} ${m.time}] ${m.sender}: ${m.text}`;
-    if (len + line.length > maxChars && current.length > 0) {
-      chunks.push(current.join("\n"));
-      current = [];
-      len = 0;
-    }
-    current.push(line);
-    len += line.length + 1;
-  }
-  if (current.length > 0) chunks.push(current.join("\n"));
-  return chunks;
-}
-
-// Spreads a fixed sample across the whole timeline (not just the tail) so a
-// years-long export still gets beginning/middle/end coverage.
-function sampleEvenly<T>(arr: T[], count: number): T[] {
-  if (arr.length <= count) return arr;
-  const result: T[] = [];
-  const step = (arr.length - 1) / (count - 1);
-  for (let i = 0; i < count; i++) {
-    result.push(arr[Math.round(i * step)]);
-  }
-  return result;
+  throw new Error("Groq rate limit persisted after retries");
 }
