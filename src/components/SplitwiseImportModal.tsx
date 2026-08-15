@@ -52,6 +52,18 @@ export const SplitwiseImportModal: React.FC<{ onClose: () => void }> = ({ onClos
     return computeCarryover(parsed.expenses, parsed.settlements);
   }, [parsed, meIndex]);
 
+  // Splitwise's export often includes its own final-balance row. Comparing
+  // against it is a free correctness check on this parser's math, in a
+  // feature where getting the math wrong means misrepresenting real money.
+  const balanceCheck = useMemo(() => {
+    if (!parsed || parsed.statedBalance.length === 0) return null;
+    const mismatches = parsed.statedBalance.filter((stated) => {
+      const ours = carryover.find((c) => c.currency === stated.currency);
+      return Math.abs((ours?.net ?? 0) - stated.net) > 1;
+    });
+    return mismatches.length === 0 ? 'match' : 'mismatch';
+  }, [parsed, carryover]);
+
   const runImport = async () => {
     if (!parsed || meIndex === null || !currentUser || !partner) return;
     const meId = currentUser._id;
@@ -188,16 +200,38 @@ export const SplitwiseImportModal: React.FC<{ onClose: () => void }> = ({ onClos
 
             {carryover.length > 0 && (
               <div className="space-y-2">
-                <div className="text-[10px] uppercase tracking-widest text-white/40">
-                  Current balance, carried over
-                </div>
-                {carryover.map((c) => (
-                  <div key={c.currency} className="rounded-2xl border border-nothing-purple/20 bg-nothing-purple/10 px-4 py-3 text-sm">
-                    {c.net > 0
-                      ? `${partner?.name ?? 'Partner'} owes you ${formatMoney(c.net, c.currency)}`
-                      : `You owe ${partner?.name ?? 'partner'} ${formatMoney(Math.abs(c.net), c.currency)}`}
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] uppercase tracking-widest text-white/40">
+                    Current balance, carried over
                   </div>
-                ))}
+                  {balanceCheck && (
+                    <span className={`text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                      balanceCheck === 'match'
+                        ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10'
+                        : 'text-amber-400 border-amber-400/30 bg-amber-400/10'
+                    }`}>
+                      {balanceCheck === 'match' ? 'Matches Splitwise' : 'Check this'}
+                    </span>
+                  )}
+                </div>
+                {carryover.map((c) => {
+                  // `c.net` is index-0-relative; flip it to "my" perspective
+                  // when I'm actually index 1, or this reads backwards.
+                  const myNet = meIndex === 0 ? c.net : -c.net;
+                  return (
+                    <div key={c.currency} className="rounded-2xl border border-nothing-purple/20 bg-nothing-purple/10 px-4 py-3 text-sm">
+                      {myNet > 0
+                        ? `${partner?.name ?? 'Partner'} owes you ${formatMoney(myNet, c.currency)}`
+                        : `You owe ${partner?.name ?? 'partner'} ${formatMoney(Math.abs(myNet), c.currency)}`}
+                    </div>
+                  );
+                })}
+                {balanceCheck === 'mismatch' && (
+                  <p className="text-[10.5px] text-amber-400/80 leading-relaxed">
+                    This doesn't quite match the running total in the CSV itself — likely from a
+                    skipped row below. Double check the balance in the app after importing.
+                  </p>
+                )}
               </div>
             )}
 

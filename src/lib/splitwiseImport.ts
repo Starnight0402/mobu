@@ -45,6 +45,8 @@ export interface SplitwiseParseResult {
   expenses: ParsedExpense[];
   settlements: ParsedSettlement[];
   skipped: SkippedRow[];
+  /** Splitwise's own running-total row, when the export includes one. */
+  statedBalance: Carryover[];
   error?: string;
 }
 
@@ -107,6 +109,7 @@ const empty = (error?: string): SplitwiseParseResult => ({
   expenses: [],
   settlements: [],
   skipped: [],
+  statedBalance: [],
   error,
 });
 
@@ -114,18 +117,26 @@ export function parseSplitwiseCsv(text: string): SplitwiseParseResult {
   const table = parseCsvTable(text);
   if (table.length < 2) return empty("That file has no data rows.");
 
-  const header = table[0].map((h) => h.trim());
+  // Splitwise prepends a "Note: does not include group expenses" line before
+  // the real header when the export covers a single friend rather than a
+  // group, so the header isn't reliably row 0 — scan for it instead.
+  const headerIdx = table.findIndex((row) => {
+    const norm = row.map((c) => c.trim());
+    return norm.includes("Date") && norm.includes("Cost") && norm.includes("Currency");
+  });
+
+  if (headerIdx < 0) {
+    return empty(
+      "That doesn't look like a Splitwise export — expected Date, Cost and Currency columns.",
+    );
+  }
+
+  const header = table[headerIdx].map((h) => h.trim());
   const iDate = header.indexOf("Date");
   const iDesc = header.indexOf("Description");
   const iCat = header.indexOf("Category");
   const iCost = header.indexOf("Cost");
   const iCur = header.indexOf("Currency");
-
-  if (iDate < 0 || iCost < 0 || iCur < 0) {
-    return empty(
-      "That doesn't look like a Splitwise export — expected Date, Cost and Currency columns.",
-    );
-  }
 
   const reserved = new Set([iDate, iDesc, iCat, iCost, iCur]);
   const personCols = header
@@ -150,22 +161,33 @@ export function parseSplitwiseCsv(text: string): SplitwiseParseResult {
   const settlements: ParsedSettlement[] = [];
   const skipped: SkippedRow[] = [];
   const currencySet = new Set<string>();
+  const stated: Carryover[] = [];
   let minDate = Infinity;
   let maxDate = -Infinity;
 
-  for (let r = 1; r < table.length; r++) {
+  for (let r = headerIdx + 1; r < table.length; r++) {
     const row = table[r];
+    const description = (row[iDesc] || "").trim();
+    const currency = (row[iCur] || "").trim();
+
+    // Splitwise's own running-total row -- Cost is blank, but the person
+    // columns carry the actual final balance. Worth keeping rather than
+    // discarding: it's a free cross-check against this parser's own math.
+    if (description.toLowerCase() === "total balance") {
+      const a = num(row[colA]);
+      if (currency && Math.abs(a) > 0.005) stated.push({ currency, net: Math.round(a * 100) / 100 });
+      continue;
+    }
+
     const dateStr = row[iDate]?.trim();
     const ts = dateStr ? Date.parse(dateStr) : NaN;
     if (!dateStr || Number.isNaN(ts)) {
-      skipped.push({ cells: row, reason: "No valid date — likely the running-total summary row" });
+      skipped.push({ cells: row, reason: "No valid date" });
       continue;
     }
 
     const cost = num(row[iCost]);
-    const currency = (row[iCur] || "").trim();
     const category = (row[iCat] || "").trim() || "General";
-    const description = (row[iDesc] || "").trim();
     const a = num(row[colA]);
     const b = num(row[colB]);
 
@@ -207,6 +229,7 @@ export function parseSplitwiseCsv(text: string): SplitwiseParseResult {
     expenses,
     settlements,
     skipped,
+    statedBalance: stated,
   };
 }
 
