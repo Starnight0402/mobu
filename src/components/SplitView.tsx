@@ -60,7 +60,11 @@ export const SplitView: React.FC = () => {
   const [composerOpen, setComposerOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [detail, setDetail] = useState<Expense | null>(null);
-  const [showSettled, setShowSettled] = useState(false);
+  // Defaults to showing everything, not just outstanding expenses -- a
+  // Splitwise import writes its whole history as settled (so it doesn't
+  // distort the live balance), and those entries shouldn't be invisible by
+  // default just because they're already paid off.
+  const [showSettled, setShowSettled] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
