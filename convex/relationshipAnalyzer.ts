@@ -154,23 +154,21 @@ export const runAnalysis = internalAction({
 });
 
 async function summarizeChunks(chunks: string[]): Promise<string[]> {
-  const results: string[] = new Array(chunks.length);
-  const concurrency = 4; // stays comfortably under Groq's free-tier RPM limit
-  for (let i = 0; i < chunks.length; i += concurrency) {
-    const batch = chunks.slice(i, i + concurrency);
-    const batchResults = await Promise.all(
-      batch.map((chunk) =>
-        callGroq([
-          {
-            role: "system",
-            content:
-              "Summarize this segment of a couple's WhatsApp chat log in 4-6 short bullet points: dominant topics, emotional tone, any conflict or tension, affection shown, and notable plans/events. Be concrete and specific. Plain text bullets only, no markdown headers.",
-          },
-          { role: "user", content: chunk },
-        ]),
-      ),
-    );
-    batchResults.forEach((r, j) => (results[i + j] = r));
+  // Sequential, not parallel: Groq's free tier caps at 12k tokens/minute
+  // *total*, so firing chunks concurrently blew straight through it. One at
+  // a time (with callGroq's own backoff as a safety net) keeps each run
+  // comfortably under that regardless of chunk count.
+  const results: string[] = [];
+  for (const chunk of chunks) {
+    const summary = await callGroq([
+      {
+        role: "system",
+        content:
+          "Summarize this segment of a couple's WhatsApp chat log in 4-6 short bullet points: dominant topics, emotional tone, any conflict or tension, affection shown, and notable plans/events. Be concrete and specific. Plain text bullets only, no markdown headers.",
+      },
+      { role: "user", content: chunk },
+    ]);
+    results.push(summary);
   }
   return results;
 }
@@ -179,28 +177,41 @@ async function callGroq(messages: { role: string; content: string }[], jsonMode 
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error("GROQ_API_KEY is not configured on the server");
 
-  const res = await fetch(GROQ_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages,
-      temperature: 0.4,
-      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
-    }),
-  });
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(GROQ_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages,
+        temperature: 0.4,
+        ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+      }),
+    });
 
-  if (!res.ok) {
+    if (res.ok) {
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) throw new Error("Groq returned an empty response");
+      return content;
+    }
+
     const text = await res.text();
+    // 429 = rate limited; Groq's error body includes "try again in Xs", so
+    // honor that instead of guessing. Everything else fails immediately.
+    if (res.status === 429 && attempt < maxAttempts) {
+      const waitMatch = text.match(/try again in ([\d.]+)s/i);
+      const waitMs = waitMatch ? Math.ceil(parseFloat(waitMatch[1]) * 1000) + 750 : attempt * 5000;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      continue;
+    }
     throw new Error(`Groq API error ${res.status}: ${text.slice(0, 300)}`);
   }
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Groq returned an empty response");
-  return content;
+  throw new Error("Groq API rate limit persisted after retries");
 }
 
 interface ParsedMessage {
@@ -231,7 +242,7 @@ function parseWhatsApp(raw: string): ParsedMessage[] {
   return messages;
 }
 
-function chunkMessages(messages: ParsedMessage[], maxChars = 14000): string[] {
+function chunkMessages(messages: ParsedMessage[], maxChars = 6000): string[] {
   const chunks: string[] = [];
   let current: string[] = [];
   let len = 0;
