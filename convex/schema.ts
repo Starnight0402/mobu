@@ -220,6 +220,7 @@ export default defineSchema({
       v.literal("insight"),
       v.literal("capsule"),
       v.literal("streak"),
+      v.literal("fight"),
     ),
     title: v.string(),
     body: v.string(),
@@ -229,6 +230,35 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_and_read", ["userId", "readAt"]),
+
+  // A logged disagreement, so patterns (frequency, severity, who tends to
+  // initiate, how often things get resolved) can feed into the analyzer
+  // instead of only ever seeing the good days.
+  fights: defineTable({
+    description: v.string(),
+    severity: v.number(), // 1 (minor tiff) - 5 (major fight)
+    initiatedBy: v.optional(v.id("users")),
+    resolved: v.boolean(),
+    resolution: v.optional(v.string()),
+    fightDate: v.optional(v.number()),
+    resolvedAt: v.optional(v.number()),
+  }),
+
+  // AI-generated relationship analysis, produced from an imported WhatsApp
+  // export plus the couple's own app data. `result` is a JSON string (see
+  // convex/relationshipAnalyzer.ts for the shape) rather than a structured
+  // object, since it's model output and the shape may drift across prompt
+  // revisions.
+  relationshipAnalyses: defineTable({
+    requestedBy: v.id("users"),
+    status: v.union(v.literal("processing"), v.literal("done"), v.literal("error")),
+    result: v.optional(v.string()),
+    error: v.optional(v.string()),
+    messageCount: v.optional(v.number()),
+    // True when the chat was too long to send in full and was evenly
+    // sampled across the timeline instead.
+    sampled: v.optional(v.boolean()),
+  }),
 
   callSignals: defineTable({
     callId: v.string(),

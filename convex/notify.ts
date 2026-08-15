@@ -12,7 +12,8 @@ export type NotificationKind =
   | "goal"
   | "insight"
   | "capsule"
-  | "streak";
+  | "streak"
+  | "fight";
 
 interface NotifyArgs {
   userId: Id<"users">;

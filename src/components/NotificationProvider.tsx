@@ -33,6 +33,7 @@ import {
   Sparkles,
   Lock,
   Flame,
+  Swords,
 } from 'lucide-react';
 
 export const KIND_ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -46,6 +47,7 @@ export const KIND_ICONS: Record<string, React.ComponentType<{ size?: number; cla
   insight: Sparkles,
   capsule: Lock,
   streak: Flame,
+  fight: Swords,
 };
 
 interface Toast {

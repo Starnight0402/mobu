@@ -14,6 +14,8 @@ import { TimelineView } from './components/TimelineView';
 import { GoalsView } from './components/GoalsView';
 import { CapsulesView } from './components/CapsulesView';
 import { InsightsView } from './components/InsightsView';
+import { RelationshipAnalyzerView } from './components/RelationshipAnalyzerView';
+import { FightLogView } from './components/FightLogView';
 import { MapView } from './components/MapView';
 import { ChatView } from './components/ChatView';
 import { CallView } from './components/CallView';
@@ -89,6 +91,10 @@ function AuthenticatedApp() {
         return <CapsulesView key="capsules" />;
       case 'insights':
         return <InsightsView key="insights" />;
+      case 'analyzer':
+        return <RelationshipAnalyzerView key="analyzer" />;
+      case 'fights':
+        return <FightLogView key="fights" />;
       case 'map':
         return <MapView key="map" />;
       case 'stats':

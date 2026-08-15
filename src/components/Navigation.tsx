@@ -17,6 +17,8 @@ import {
   Scale,
   ListChecks,
   Bell,
+  Brain,
+  Swords,
   LucideIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -56,6 +58,8 @@ const MORE_TABS: TabDef[] = [
   { id: 'timeline', icon: Clock, label: 'Timeline' },
   { id: 'map', icon: MapIcon, label: 'Map' },
   { id: 'insights', icon: Sparkles, label: 'Insights' },
+  { id: 'analyzer', icon: Brain, label: 'Analyzer' },
+  { id: 'fights', icon: Swords, label: 'Fights' },
   { id: 'goals', icon: Target, label: 'Goals' },
   { id: 'capsules', icon: Lock, label: 'Capsules' },
   { id: 'stats', icon: BarChart2, label: 'Stats' },
