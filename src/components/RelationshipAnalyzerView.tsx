@@ -8,6 +8,7 @@ import {
 import { api } from '../../convex/_generated/api';
 import { ChatStatsDashboard, SERIES, type ChatStats } from './ChatStatsDashboard';
 import { ConflictEpisodes, type Episode } from './ConflictEpisodes';
+import { ConnectionMoments } from './ConnectionMoments';
 
 interface Claim { point: string; evidence?: string }
 interface PersonRead { behaviour: string[]; suggestions: string[] }
@@ -22,7 +23,7 @@ interface Narrative {
   together?: string[];
 }
 
-type Tab = 'overview' | 'fights' | 'read';
+type Tab = 'overview' | 'fights' | 'us' | 'read';
 
 export const RelationshipAnalyzerView: React.FC = () => {
   const latest = useQuery(api.relationshipAnalyzer.latestImport);
@@ -57,7 +58,11 @@ export const RelationshipAnalyzerView: React.FC = () => {
   const processing = latest?.status === 'processing';
   const stats: ChatStats | null =
     latest?.status === 'done' && latest.stats ? JSON.parse(latest.stats) : null;
-  const episodes = (latest?.episodes ?? []) as unknown as Episode[];
+  const allEpisodes = (latest?.episodes ?? []) as unknown as Episode[];
+  // Rows written before connection detection existed have no `kind` and are
+  // all conflicts, so treat a missing value as one.
+  const fights = allEpisodes.filter((e) => (e.kind ?? 'conflict') === 'conflict');
+  const connections = allEpisodes.filter((e) => e.kind === 'connection');
 
   const narrativeRow = analyses.find((a) => a.status === 'done' && a.result);
   let narrative: Narrative | null = null;
@@ -124,7 +129,8 @@ export const RelationshipAnalyzerView: React.FC = () => {
           <div className="flex gap-1 p-1 glass">
             {([
               ['overview', 'Overview'],
-              ['fights', `Fights${episodes.length ? ` (${episodes.length})` : ''}`],
+              ['fights', `Fights${fights.length ? ` (${fights.length})` : ''}`],
+              ['us', `Us${connections.length ? ` (${connections.length})` : ''}`],
               ['read', 'AI read'],
             ] as Array<[Tab, string]>).map(([id, label]) => (
               <button
@@ -140,7 +146,8 @@ export const RelationshipAnalyzerView: React.FC = () => {
           </div>
 
           {tab === 'overview' && <ChatStatsDashboard stats={stats} />}
-          {tab === 'fights' && <ConflictEpisodes episodes={episodes} senders={stats.senders} />}
+          {tab === 'fights' && <ConflictEpisodes episodes={fights} senders={stats.senders} />}
+          {tab === 'us' && <ConnectionMoments episodes={connections} senders={stats.senders} />}
           {tab === 'read' && <AIRead narrative={narrative} senders={stats.senders} />}
         </>
       )}

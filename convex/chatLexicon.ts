@@ -90,6 +90,91 @@ export const AFFECTION = [
 export const AFFECTION_EMOJI = /😘|💋|🥰|❤|❤️|😍|🤗|💕|💖|😚|🫶|🥹/u;
 export const DISTRESS_EMOJI = /😭|💔|😔|😞|😤|🙄|😑|😒|😡|🤬/u;
 
+/**
+ * Withdrawal that is *announced* rather than just enacted. Reading the real
+ * export, this is the move that turns a disagreement into a multi-day episode:
+ * not going quiet, but telling the other person you're going quiet.
+ */
+export const WITHDRAWAL = [
+  "i won't bring it up", "i wont bring it up", "wont bring anything like this up",
+  "won't ask again", "wont ask again", "i will not do that again",
+  "you won't hear about", "you wont hear about", "never again",
+  "lets end this topic", "let's end this topic", "drop it here", "drop this conversation",
+  "i'll be quiet", "ill be quiet", "i'll keep quiet", "ill keep quite", "ill keep quiet",
+  "i'll pull away", "ill pull away", "im done talking", "i'm done talking",
+  // NB: a bare "take care" is deliberately absent -- in real use it is far
+  // more often genuine warmth ("take care of yourself, I love you") than a
+  // sign-off, and including it manufactured false fights.
+  "bbye", "enjoy your freedom",
+  "whatever satisfies you", "whatever makes you satisfied", "whatever you think is right",
+  "khush raho", "jo tumhe theek lage", "jo aapko theek lage", "apni marzi",
+  "main kuch nahi bolunga", "main kuch nahi bolungi", "ab kuch nahi kahunga",
+  "baat khatam", "chodo ise", "rehne do",
+];
+
+/**
+ * Saying nothing is wrong while plainly signalling otherwise. Called out
+ * verbatim in the export -- "if it didnt bother you, you wouldn't have sent me
+ * the screenshot itself" -- and it reliably precedes escalation.
+ */
+export const DENIAL = [
+  "nothing", "nothing bothering me", "nothing like that", "nothing bubs", "nothing baby",
+  "im fine", "i'm fine", "its fine", "it's fine", "im okay", "i'm okay", "its okay",
+  "aisehi pucha", "aise hi pucha", "kuch nahi", "kuch bhi nahi", "theek hu", "thik hu",
+  "no baby", "nahi kuch nahi",
+];
+
+/* ---------------- connection-side lexicons ---------------- */
+
+/** Explicit belief in / praise of the other person. */
+export const SUPPORT = [
+  "proud of you", "so proud", "i believe in you", "you can do it", "you'll get it",
+  "youll get it", "you deserve", "you're amazing", "youre amazing", "you are amazing",
+  "you're the best", "youre the best", "well done", "good job", "great job",
+  "congratulations", "congrats", "happy for you", "you got this", "dont ever think",
+  "don't ever think", "you're doing great", "youre doing great", "impressed",
+  "shabash", "bahut badhiya", "kamaal", "tum kar loge", "aap kar loge",
+  "mujhe bharosa hai", "tumpe bharosa", "garv",
+];
+
+/** Self-disclosure — the past, family, fears, things not easily said. */
+export const VULNERABILITY = [
+  "i've never told", "ive never told", "never told anyone", "i'm scared", "im scared",
+  "i was scared", "growing up", "my childhood", "when i was young", "my parents",
+  "my dad", "my mom", "my father", "my mother", "i felt", "it made me feel",
+  "i struggled", "i was hurt", "insecure", "my fear", "i worry", "honestly",
+  "to be honest", "truth is", "i've been thinking", "ive been thinking",
+  "bachpan", "mere papa", "meri mummy", "meri maa", "ghar walo", "dar lagta",
+  "sach bataun", "sach me", "mujhe lagta hai ki",
+];
+
+/** Building a shared future — the strongest signal of a couple, not a pair. */
+export const FUTURE = [
+  "our house", "our home", "our future", "our life", "our kids", "our app",
+  "when we're married", "when we get married", "after marriage", "move in",
+  "live together", "our place", "grow old", "forever", "rest of my life",
+  "spend my life", "marry you", "our family", "plan our",
+  "hamara ghar", "hamari shaadi", "shaadi ke baad", "saath rahenge",
+  "humara future", "hamesha", "zindagi bhar",
+];
+
+/** Practical looking-after: health, food, rest, safety. */
+export const CARETAKING = [
+  "have you eaten", "did you eat", "eat something", "take your medicine", "take rest",
+  "get some rest", "sleep well", "drink water", "see a doctor", "go to the doctor",
+  "take care of yourself", "are you okay", "how are you feeling", "feeling better",
+  "reached safely", "reach safely", "text me when you reach", "let me know when you reach",
+  "khana kha", "khana khaya", "dawai", "aaram kar", "so ja", "paani pi",
+  "doctor ko dikha", "tabiyat", "sambhal ke", "dhyan rakhna", "pahunch gaye",
+];
+
+/** Gratitude and repair-adjacent warmth. */
+export const GRATITUDE = [
+  "thank you for", "thanks for", "grateful", "means a lot", "you are my everything",
+  "you're my home", "youre my home", "you are my home", "lucky to have you",
+  "best thing that", "i'm lucky", "im lucky", "shukriya", "dhanyavaad",
+];
+
 function buildMatcher(terms: string[]): RegExp {
   // Single words get word boundaries; phrases match literally.
   const parts = terms.map((t) => {
@@ -104,6 +189,17 @@ export const HURT_RE = buildMatcher(HURT);
 export const TRUST_RE = buildMatcher(TRUST);
 export const REPAIR_RE = buildMatcher(REPAIR);
 export const AFFECTION_RE = buildMatcher(AFFECTION);
+export const WITHDRAWAL_RE = buildMatcher(WITHDRAWAL);
+export const SUPPORT_RE = buildMatcher(SUPPORT);
+export const VULNERABILITY_RE = buildMatcher(VULNERABILITY);
+export const FUTURE_RE = buildMatcher(FUTURE);
+export const CARETAKING_RE = buildMatcher(CARETAKING);
+export const GRATITUDE_RE = buildMatcher(GRATITUDE);
+
+// Denial only counts as a signal when the message is *only* the denial --
+// a curt "nothing" or "im fine" on its own. The same words inside a longer
+// sentence are ordinary conversation.
+const DENIAL_SET = new Set(DENIAL);
 
 export interface MessageSentiment {
   accusation: boolean;
@@ -112,30 +208,66 @@ export interface MessageSentiment {
   repair: boolean;
   affection: boolean;
   distress: boolean;
+  withdrawal: boolean;
+  denial: boolean;
+  support: boolean;
+  vulnerability: boolean;
+  future: boolean;
+  caretaking: boolean;
+  gratitude: boolean;
   /** Net negativity for this single message. */
   negative: number;
+  /** Net warmth/depth for this single message. */
+  positive: number;
 }
 
 export function scoreMessage(text: string): MessageSentiment {
   const t = text.toLowerCase();
+  const stripped = t.replace(/[^\p{L}\s']/gu, "").trim();
+
   const accusation = ACCUSATION_RE.test(t);
   const hurt = HURT_RE.test(t);
   const trust = TRUST_RE.test(t);
   const repair = REPAIR_RE.test(t);
   const affection = AFFECTION_RE.test(t) || AFFECTION_EMOJI.test(text);
   const distress = DISTRESS_EMOJI.test(text);
+  const withdrawal = WITHDRAWAL_RE.test(t);
+  const denial = DENIAL_SET.has(stripped);
+
+  const support = SUPPORT_RE.test(t);
+  const vulnerability = VULNERABILITY_RE.test(t);
+  const future = FUTURE_RE.test(t);
+  const caretaking = CARETAKING_RE.test(t);
+  const gratitude = GRATITUDE_RE.test(t);
 
   let negative = 0;
   if (accusation) negative += 3;
   if (hurt) negative += 3;
+  // Announcing a withdrawal is what turns a disagreement into an episode, so
+  // it outweighs the grievance that triggered it.
+  if (withdrawal) negative += 4;
   if (trust) negative += 2;
+  if (denial) negative += 1.5;
   if (distress) negative += 1;
-  // Affection inside an otherwise negative message softens it ("baby I'm
-  // upset" is real but milder than the same words without it); affection with
-  // nothing negative is just warmth.
   if (affection) negative -= 1.5;
 
-  return { accusation, hurt, trust, repair, affection, distress, negative: Math.max(0, negative) };
+  let positive = 0;
+  if (support) positive += 3;
+  if (vulnerability) positive += 3;
+  if (future) positive += 3;
+  if (gratitude) positive += 2.5;
+  if (caretaking) positive += 2;
+  if (affection) positive += 1;
+  // Warmth doesn't count while a fight is running; the same words mean
+  // something different mid-argument.
+  if (accusation || hurt || withdrawal) positive = 0;
+
+  return {
+    accusation, hurt, trust, repair, affection, distress, withdrawal, denial,
+    support, vulnerability, future, caretaking, gratitude,
+    negative: Math.max(0, negative),
+    positive,
+  };
 }
 
 /** Rough Hindi/Hinglish detector for the language-mix stat. */

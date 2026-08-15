@@ -389,16 +389,24 @@ const TOPIC_PATTERNS: Array<{ topic: string; re: RegExp }> = [
   { topic: "distance", re: /\b(miss you|missing you|far away|long distance|when will you come|apart|alone here)\b/i },
 ];
 
-export interface ConflictEpisode {
+
+/* ------------------------------------------------------------------ *
+ * Episode detection (shared machinery)
+ * ------------------------------------------------------------------ */
+
+export interface Episode {
+  kind: "conflict" | "connection";
   date: string;
   startedAt: number;
   endedAt: number;
   score: number;
+  /** 1-5, derived from score. Intensity for conflict, depth for connection. */
   severity: number;
   topic: string;
   messageCount: number;
   openedBy?: string;
   closedBy?: string;
+  /** Conflict: ended in repair. Connection: both people took part. */
   repaired: boolean;
   excerpts: Array<{ sender: string; text: string; at: number }>;
   context: {
@@ -409,195 +417,334 @@ export interface ConflictEpisode {
     volumeRatio: number;
     longestGapHours: number;
     nextDayMessages: number | null;
+    /** Conflict only: how far warmth fell below each person's own norm. */
+    toneDrop?: number;
+    /** Connection only: which signals fired, for labelling. */
+    signals?: string[];
+  };
+}
+
+// Kept as an alias so existing callers/tables keep compiling.
+export type ConflictEpisode = Episode;
+
+const WINDOW_MS = 4 * 60 * 60 * 1000; // a fight or a deep talk is hours, not days
+const MIN_WINDOW_MSGS = 6;
+
+function dayKeyOf(t: number) {
+  return dayKey(t);
+}
+
+interface Candidate {
+  start: number;
+  end: number;
+  from: number;
+  to: number;
+  score: number;
+  extra: Record<string, unknown>;
+}
+
+/** Greedily takes the best-scoring windows, skipping any that overlap one already taken. */
+function pickNonOverlapping(cands: Candidate[], limit = 12): Candidate[] {
+  const chosen: Candidate[] = [];
+  for (const c of [...cands].sort((a, b) => b.score - a.score)) {
+    if (chosen.length >= limit) break;
+    if (chosen.some((x) => c.from <= x.to && c.to >= x.from)) continue;
+    chosen.push(c);
+  }
+  return chosen.sort((a, b) => b.start - a.start);
+}
+
+function topicFor(msgs: ParsedMessage[]): string {
+  const counts = new Map<string, number>();
+  for (const m of msgs) {
+    for (const { topic, re } of TOPIC_PATTERNS) {
+      if (re.test(m.text)) counts.set(topic, (counts.get(topic) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "other";
+}
+
+function contextFor(
+  window: ParsedMessage[],
+  byDay: Map<string, ParsedMessage[]>,
+  dayKeys: string[],
+  baseline: number,
+): Episode["context"] {
+  const days = new Set(window.map((m) => dayKeyOf(m.sentAt)));
+  const perDay = [...days].map((d) => byDay.get(d)?.length ?? 0);
+  const lastDay = [...days].sort().pop()!;
+  const nextKey = dayKeys[dayKeys.indexOf(lastDay) + 1];
+  let longestGapHours = 0;
+  for (let i = 1; i < window.length; i++) {
+    longestGapHours = Math.max(longestGapHours, (window[i].sentAt - window[i - 1].sentAt) / 3600000);
+  }
+  const dayTotal = perDay.reduce((a, b) => a + b, 0);
+  return {
+    days: days.size,
+    messagesInEpisode: window.length,
+    peakDayMessages: Math.max(0, ...perDay),
+    baseline,
+    volumeRatio: baseline ? +(dayTotal / days.size / baseline).toFixed(2) : 1,
+    longestGapHours: +longestGapHours.toFixed(1),
+    nextDayMessages: nextKey ? (byDay.get(nextKey)?.length ?? null) : null,
   };
 }
 
 /**
- * Finds days that look like real conflict, then merges consecutive ones into
- * single episodes -- an argument that runs past midnight, or picks back up the
- * next evening, is one fight rather than two.
+ * Conflict detection.
+ *
+ * Scores 4-hour windows rather than whole days, because a fight is a burst:
+ * in the reference export, 11 June was ordinary banter until 10:56pm and an
+ * argument from then until midnight. Scoring the day averaged the two together
+ * and the day-level signal was dominated by the banter.
+ *
+ * Message length is deliberately not a signal at all -- it marks any serious
+ * conversation, and using it flagged career advice, family history and holiday
+ * planning as fights. What actually separates an argument is negativity aimed
+ * at the partner plus *tone collapse*: warmth dropping below what these two
+ * specific people normally do. That catches the real tell, which is
+ * "Okay baby" turning into "Okay." and pet names turning into first names.
  */
-export function detectConflicts(msgs: ParsedMessage[], stats: ChatStats): ConflictEpisode[] {
-  if (msgs.length === 0) return [];
+export function detectConflicts(msgs: ParsedMessage[], stats: ChatStats): Episode[] {
+  if (msgs.length < MIN_WINDOW_MSGS) return [];
 
+  const sentiments = msgs.map((m) => scoreMessage(m.text));
   const byDay = new Map<string, ParsedMessage[]>();
   for (const m of msgs) {
-    const k = dayKey(m.sentAt);
+    const k = dayKeyOf(m.sentAt);
     if (!byDay.has(k)) byDay.set(k, []);
     byDay.get(k)!.push(m);
   }
   const dayKeys = [...byDay.keys()].sort();
   const baseline = stats.avgPerDay;
 
-  interface Scored {
-    key: string;
-    score: number;
-    msgs: ParsedMessage[];
-    flagged: ParsedMessage[];
-    qualifies: boolean;
+  // Each person's own warmth rate. Comparing against a shared average would
+  // punish whoever is simply less effusive by default.
+  const affectionBase: Record<string, number> = {};
+  for (const s of stats.senders) {
+    const own = msgs.filter((m) => m.sender === s);
+    const warm = own.filter((_, i) => scoreMessage(own[i].text).affection).length;
+    affectionBase[s] = own.length ? warm / own.length : 0;
   }
 
-  const scored: Scored[] = dayKeys.map((key) => {
-    const dayMsgs = byDay.get(key)!;
-
-    // Message length is deliberately NOT a primary signal. Long messages mark
-    // any serious conversation -- career advice, family history, trip planning
-    // -- and scoring on them flagged all three as fights. What separates an
-    // argument is negativity aimed at the partner, so that carries the weight
-    // and length only amplifies a message already scored negative.
-    const sentiments = dayMsgs.map((m) => scoreMessage(m.text));
-
+  const cands: Candidate[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    let neg = 0;
     let accusation = 0;
     let hurt = 0;
+    let withdrawal = 0;
+    let denial = 0;
     let trust = 0;
-    let repair = 0;
-    let affection = 0;
-    let negTotal = 0;
     const negBySender = new Map<string, number>();
-    const flagged: ParsedMessage[] = [];
+    const warmBySender = new Map<string, { warm: number; total: number }>();
 
-    dayMsgs.forEach((m, i) => {
-      const s = sentiments[i];
+    for (let j = i; j < msgs.length; j++) {
+      if (msgs[j].sentAt - msgs[i].sentAt > WINDOW_MS) break;
+      const s = sentiments[j];
+      const who = msgs[j].sender;
+      neg += s.negative;
       if (s.accusation) accusation++;
       if (s.hurt) hurt++;
+      if (s.withdrawal) withdrawal++;
+      if (s.denial) denial++;
       if (s.trust) trust++;
-      if (s.repair) repair++;
-      if (s.affection) affection++;
-      if (s.negative > 0) {
-        // A long negative message is someone laying out a grievance in full.
-        const weight = s.negative * (m.text.length > LONG ? 1.6 : 1);
-        negTotal += weight;
-        negBySender.set(m.sender, (negBySender.get(m.sender) ?? 0) + weight);
-        flagged.push(m);
+      if (s.negative > 0) negBySender.set(who, (negBySender.get(who) ?? 0) + s.negative);
+
+      const w = warmBySender.get(who) ?? { warm: 0, total: 0 };
+      w.total++;
+      if (s.affection) w.warm++;
+      warmBySender.set(who, w);
+
+      const count = j - i + 1;
+      if (count < MIN_WINDOW_MSGS) continue;
+
+      // Tone collapse: how far below their own norm each person's warmth fell,
+      // weighted by how much they said. This is what catches a cold exchange
+      // that never uses an angry word.
+      let toneDrop = 0;
+      for (const [who2, w2] of warmBySender) {
+        if (w2.total < 4) continue;
+        const drop = affectionBase[who2] - w2.warm / w2.total;
+        if (drop > 0) toneDrop += drop * Math.min(w2.total, 25);
       }
-    });
 
-    // A fight is concentrated, not spread across a day: find the heaviest
-    // 90-minute window rather than summing everything from breakfast to bed.
-    let burst = 0;
-    for (let i = 0; i < dayMsgs.length; i++) {
-      let sum = 0;
-      for (let j = i; j < dayMsgs.length; j++) {
-        if (dayMsgs[j].sentAt - dayMsgs[i].sentAt > 90 * 60 * 1000) break;
-        sum += sentiments[j].negative;
-      }
-      burst = Math.max(burst, sum);
-    }
+      // Both sides negative = an argument, not one person venting about work.
+      const mutual = negBySender.size > 1 ? Math.min(...negBySender.values()) : 0;
 
-    // Both people being negative is what makes it an argument rather than one
-    // person venting about work or a third party.
-    const mutual = negBySender.size > 1 ? Math.min(...negBySender.values()) : 0;
+      const score =
+        neg + toneDrop * 2.5 + mutual * 2 + accusation * 2 + withdrawal * 3 + denial * 1.5;
 
-    // Warmth dampens: a day thick with affection is a couple talking, however
-    // heavy the subject.
-    const affectionRatio = affection / Math.max(1, dayMsgs.length);
-    const damp = Math.max(0.35, 1 - affectionRatio * 2.5);
+      // Tone must actually have collapsed. Without this, an affectionate
+      // exchange that happens to contain one charged phrase still qualifies --
+      // and warmth staying at its normal level is the clearest evidence that
+      // whatever was said, it wasn't a fight.
+      const qualifies =
+        (accusation >= 2 || (accusation >= 1 && hurt >= 1) || withdrawal >= 1 || trust >= 3) &&
+        mutual > 0 &&
+        toneDrop >= 1.5;
 
-    const raw =
-      accusation * 5 + hurt * 4 + trust * 2 + burst * 2 + mutual * 1.5 + repair * 0.5;
-    const score = raw * damp;
-
-    // A gate on top of the score, because score alone can be reached by an
-    // emotionally intense but perfectly friendly day (worry about a parent,
-    // venting about work). Something has to be directed AT the partner:
-    // repeated accusation, accusation plus sustained hurt, or a real cluster
-    // of suspicion.
-    const qualifies =
-      accusation >= 2 || (accusation >= 1 && hurt >= 2) || trust >= 4 || hurt >= 5;
-
-    return { key, score, msgs: dayMsgs, flagged, qualifies };
-  });
-
-  const HOT = 16;
-  const MAX_EPISODE_DAYS = 5;
-  const hot = scored.filter((s) => s.score >= HOT && s.qualifies);
-  if (hot.length === 0) return [];
-
-  // Merge runs of consecutive (or single-day-gap) hot days into one episode.
-  const episodes: ConflictEpisode[] = [];
-  let group: Scored[] = [];
-
-  const flush = () => {
-    if (group.length === 0) return;
-    const all = group.flatMap((g) => g.msgs);
-    const flagged = group.flatMap((g) => g.flagged);
-    const score = group.reduce((sum, g) => sum + g.score, 0);
-    const first = group[0];
-
-    // Topic: whichever pattern matches most across the flagged messages.
-    const topicScores = new Map<string, number>();
-    for (const m of flagged) {
-      for (const { topic, re } of TOPIC_PATTERNS) {
-        if (re.test(m.text)) topicScores.set(topic, (topicScores.get(topic) ?? 0) + 1);
+      if (qualifies && score >= 30) {
+        cands.push({
+          start: msgs[i].sentAt,
+          end: msgs[j].sentAt,
+          from: i,
+          to: j,
+          score,
+          extra: { toneDrop: +toneDrop.toFixed(2) },
+        });
       }
     }
-    const topic =
-      [...topicScores.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "other";
+  }
 
-    const repairs = all.filter((m) => REPAIR_RE.test(m.text.toLowerCase()));
-    const dayCount = group.reduce((sum, g) => sum + g.msgs.length, 0);
-    const idx = dayKeys.indexOf(group[group.length - 1].key);
-    const nextKey = dayKeys[idx + 1];
-
-    let longestGapHours = 0;
-    for (let i = 1; i < all.length; i++) {
-      longestGapHours = Math.max(longestGapHours, (all[i].sentAt - all[i - 1].sentAt) / 3600000);
-    }
-
-    episodes.push({
-      date: first.key,
-      startedAt: all[0].sentAt,
-      endedAt: all[all.length - 1].sentAt,
-      score: Math.round(score),
-      // 18 is the detection floor, ~100 was the worst episode in the reference
-      // export, so this maps the observed range onto 1-5.
-      severity: Math.max(1, Math.min(5, Math.round(score / 22) + 1)),
-      topic,
-      messageCount: dayCount,
+  return pickNonOverlapping(cands).map((c) => {
+    const window = msgs.slice(c.from, c.to + 1);
+    const flagged = window.filter((_, k) => sentiments[c.from + k].negative > 0);
+    const repairs = window.filter((_, k) => sentiments[c.from + k].repair);
+    return {
+      kind: "conflict" as const,
+      date: dayKeyOf(c.start),
+      startedAt: c.start,
+      endedAt: c.end,
+      score: Math.round(c.score),
+      severity: Math.max(1, Math.min(5, Math.round(c.score / 45) + 1)),
+      topic: topicFor(flagged.length ? flagged : window),
+      messageCount: window.length,
       openedBy: flagged[0]?.sender,
       closedBy: repairs.length ? repairs[repairs.length - 1].sender : undefined,
       repaired: repairs.length > 0,
-      excerpts: flagged.slice(0, 6).map((m) => ({
+      excerpts: (flagged.length ? flagged : window).slice(0, 6).map((m) => ({
         sender: m.sender,
         text: m.text.length > 400 ? m.text.slice(0, 400) + "…" : m.text,
         at: m.sentAt,
       })),
       context: {
-        days: group.length,
-        messagesInEpisode: dayCount,
-        peakDayMessages: Math.max(...group.map((g) => g.msgs.length)),
-        baseline,
-        // Per-day average against the all-time daily average, so a two-day
-        // episode isn't reported as twice the traffic of a one-day one.
-        volumeRatio: baseline ? +(dayCount / group.length / baseline).toFixed(2) : 1,
-        longestGapHours: +longestGapHours.toFixed(1),
-        nextDayMessages: nextKey ? (byDay.get(nextKey)?.length ?? null) : null,
+        ...contextFor(window, byDay, dayKeys, baseline),
+        toneDrop: c.extra.toneDrop as number,
       },
-    });
-    group = [];
-  };
+    };
+  });
+}
 
-  for (const s of hot) {
-    if (group.length === 0) {
-      group = [s];
-      continue;
-    }
-    // Calendar distance, not position in the list of days that happen to have
-    // messages -- otherwise a quiet day between two flare-ups makes them look
-    // adjacent when they're a week apart.
-    const prevDay = new Date(group[group.length - 1].key).getTime();
-    const curDay = new Date(s.key).getTime();
-    const daysApart = Math.round((curDay - prevDay) / 86400000);
-    const spanFromStart = Math.round((curDay - new Date(group[0].key).getTime()) / 86400000);
-    // The span cap matters as much as the gap: in a dense stretch, a rolling
-    // 2-day window will happily chain a whole fortnight into one "fight".
-    if (daysApart <= 2 && spanFromStart <= MAX_EPISODE_DAYS) group.push(s);
-    else {
-      flush();
-      group = [s];
+const CONNECTION_LABELS: Array<{ key: string; label: string }> = [
+  { key: "future", label: "Building a life" },
+  { key: "vulnerability", label: "Opening up" },
+  { key: "support", label: "Backing each other" },
+  { key: "caretaking", label: "Looking after" },
+  { key: "gratitude", label: "Gratitude" },
+];
+
+/**
+ * Connection detection -- the mirror of the above, and it reuses the very
+ * signal that made the first conflict detector wrong.
+ *
+ * Long, sustained, two-sided exchanges with no negativity in them are not
+ * fights; they are the best conversations these two have. Scoring them as
+ * their own thing turns the old false positives (career advice, family
+ * history, planning a trip) into the feature they should always have been.
+ */
+export function detectConnection(msgs: ParsedMessage[], stats: ChatStats): Episode[] {
+  if (msgs.length < MIN_WINDOW_MSGS) return [];
+
+  const sentiments = msgs.map((m) => scoreMessage(m.text));
+  const byDay = new Map<string, ParsedMessage[]>();
+  for (const m of msgs) {
+    const k = dayKeyOf(m.sentAt);
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k)!.push(m);
+  }
+  const dayKeys = [...byDay.keys()].sort();
+  const baseline = stats.avgPerDay;
+
+  const cands: Candidate[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    let pos = 0;
+    let neg = 0;
+    let longMsgs = 0;
+    const posBySender = new Map<string, number>();
+    const hits: Record<string, number> = {
+      support: 0, vulnerability: 0, future: 0, caretaking: 0, gratitude: 0,
+    };
+
+    for (let j = i; j < msgs.length; j++) {
+      if (msgs[j].sentAt - msgs[i].sentAt > WINDOW_MS) break;
+      const s = sentiments[j];
+      const who = msgs[j].sender;
+      pos += s.positive;
+      neg += s.negative;
+      if (msgs[j].text.length > LONG) longMsgs++;
+      if (s.support) hits.support++;
+      if (s.vulnerability) hits.vulnerability++;
+      if (s.future) hits.future++;
+      if (s.caretaking) hits.caretaking++;
+      if (s.gratitude) hits.gratitude++;
+      if (s.positive > 0) posBySender.set(who, (posBySender.get(who) ?? 0) + s.positive);
+
+      const count = j - i + 1;
+      if (count < MIN_WINDOW_MSGS) continue;
+
+      // Both people contributing is what makes it a conversation rather than
+      // one person monologuing.
+      const mutual = posBySender.size > 1 ? Math.min(...posBySender.values()) : 0;
+      // Depth: substantial messages, but only counted alongside real warmth,
+      // never on their own.
+      const depth = Math.min(longMsgs, 12) * 1.5;
+      const distinct = Object.values(hits).filter((n) => n > 0).length;
+
+      // Any real negativity disqualifies the window outright -- a warm patch
+      // inside an argument is repair, and belongs to the fight, not here.
+      const score = neg > 4 ? 0 : pos + mutual * 2 + depth + distinct * 3;
+
+      if (score >= 32 && mutual > 0 && neg <= 4) {
+        cands.push({
+          start: msgs[i].sentAt,
+          end: msgs[j].sentAt,
+          from: i,
+          to: j,
+          score,
+          extra: { hits: { ...hits } },
+        });
+      }
     }
   }
-  flush();
 
-  return episodes.sort((a, b) => b.startedAt - a.startedAt);
+  return pickNonOverlapping(cands).map((c) => {
+    const window = msgs.slice(c.from, c.to + 1);
+    const hits = c.extra.hits as Record<string, number>;
+    const signals = CONNECTION_LABELS.filter((l) => hits[l.key] > 0)
+      .sort((a, b) => hits[b.key] - hits[a.key])
+      .map((l) => l.label);
+
+    // Show the messages that carried the warmth, preferring substantial ones.
+    const notable = window
+      .map((m, k) => ({ m, s: sentiments[c.from + k] }))
+      .filter((x) => x.s.positive > 0)
+      .sort((a, b) => b.s.positive - a.s.positive || b.m.text.length - a.m.text.length)
+      .slice(0, 6)
+      .map((x) => x.m)
+      .sort((a, b) => a.sentAt - b.sentAt);
+
+    const senders = new Set(window.map((m) => m.sender));
+    return {
+      kind: "connection" as const,
+      date: dayKeyOf(c.start),
+      startedAt: c.start,
+      endedAt: c.end,
+      score: Math.round(c.score),
+      severity: Math.max(1, Math.min(5, Math.round(c.score / 40) + 1)),
+      topic: signals[0] ? CONNECTION_LABELS.find((l) => l.label === signals[0])!.key : topicFor(window),
+      messageCount: window.length,
+      openedBy: (notable[0] ?? window[0]).sender,
+      closedBy: (notable[notable.length - 1] ?? window[window.length - 1]).sender,
+      repaired: senders.size > 1,
+      excerpts: (notable.length ? notable : window.slice(0, 6)).map((m) => ({
+        sender: m.sender,
+        text: m.text.length > 400 ? m.text.slice(0, 400) + "…" : m.text,
+        at: m.sentAt,
+      })),
+      context: {
+        ...contextFor(window, byDay, dayKeys, baseline),
+        signals,
+      },
+    };
+  });
 }

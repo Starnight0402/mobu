@@ -281,12 +281,20 @@ export default defineSchema({
   // that never made it into `fights`.
   conflictEpisodes: defineTable({
     importId: v.id("chatImports"),
+    // The same table carries the mirror-image "connection" episodes: deep,
+    // two-sided, warm exchanges. Identical shape, opposite sign, and keeping
+    // them together means one query and one delete path. Optional so rows
+    // written before connection detection existed still read as conflicts.
+    kind: v.optional(v.union(v.literal("conflict"), v.literal("connection"))),
     date: v.string(), // YYYY-MM-DD
     startedAt: v.number(),
     endedAt: v.number(),
     score: v.number(), // detector confidence/intensity
     severity: v.number(), // 1-5, derived from score
-    topic: v.optional(topicValidator),
+    // Free-text rather than the shared enum: connection episodes are labelled
+    // by which warmth signal dominated ("vulnerability", "future"), which is a
+    // different vocabulary from what a fight is about.
+    topic: v.optional(v.string()),
     messageCount: v.number(),
     // Who sent the first heavy message of the episode.
     openedBy: v.optional(v.string()),

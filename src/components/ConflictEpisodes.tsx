@@ -4,6 +4,7 @@ import { ChevronDown, Swords, AlertTriangle } from 'lucide-react';
 import { SERIES } from './ChatStatsDashboard';
 
 export interface Episode {
+  kind?: 'conflict' | 'connection';
   _id: string;
   date: string;
   startedAt: number;
@@ -23,6 +24,8 @@ export interface Episode {
     volumeRatio: number;
     longestGapHours: number;
     nextDayMessages: number | null;
+    toneDrop?: number;
+    signals?: string[];
   };
 }
 

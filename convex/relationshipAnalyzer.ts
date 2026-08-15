@@ -11,6 +11,7 @@ import { requireUserId } from "./authHelpers";
 import {
   computeChatStats,
   detectConflicts,
+  detectConnection,
   parseWhatsApp,
   type ChatStats,
   type ConflictEpisode,
@@ -159,6 +160,7 @@ export const saveEpisodes = internalMutation({
     importId: v.id("chatImports"),
     episodes: v.array(
       v.object({
+        kind: v.union(v.literal("conflict"), v.literal("connection")),
         date: v.string(),
         startedAt: v.number(),
         endedAt: v.number(),
@@ -176,11 +178,7 @@ export const saveEpisodes = internalMutation({
   },
   handler: async (ctx, args) => {
     for (const e of args.episodes) {
-      await ctx.db.insert("conflictEpisodes", {
-        importId: args.importId,
-        ...e,
-        topic: e.topic as never,
-      });
+      await ctx.db.insert("conflictEpisodes", { importId: args.importId, ...e });
     }
   },
 });
@@ -288,7 +286,10 @@ export const runImport = internalAction({
       // Everything is computed from the in-memory array before a single row is
       // written, so the stats pass never pays for reading 15k rows back.
       const stats: ChatStats = computeChatStats(messages);
-      const episodes: ConflictEpisode[] = detectConflicts(messages, stats);
+      const episodes: ConflictEpisode[] = [
+        ...detectConflicts(messages, stats),
+        ...detectConnection(messages, stats),
+      ];
 
       // WhatsApp exports are always full-history, so an import replaces rather
       // than appends.
@@ -308,6 +309,7 @@ export const runImport = internalAction({
       await ctx.runMutation(internal.relationshipAnalyzer.saveEpisodes, {
         importId: args.importId,
         episodes: episodes.map((e) => ({
+          kind: e.kind,
           date: e.date,
           startedAt: e.startedAt,
           endedAt: e.endedAt,
@@ -411,14 +413,33 @@ async function generateNarrative(
     `Longest streak both texted: ${stats.streaks.longest} days (current ${stats.streaks.current}). Longest silence: ${stats.longestSilence.hours}h.`,
   );
 
+  const conflicts = episodes.filter((e) => e.kind === "conflict");
+  const connections = episodes.filter((e) => e.kind === "connection");
+
   const topicCounts = new Map<string, number>();
-  for (const e of episodes) topicCounts.set(e.topic, (topicCounts.get(e.topic) ?? 0) + 1);
+  for (const e of conflicts) topicCounts.set(e.topic, (topicCounts.get(e.topic) ?? 0) + 1);
   digest.push(
-    `\n${episodes.length} conflict episodes detected in the chat. By topic: ${[...topicCounts.entries()].map(([t, n]) => `${t} ${n}`).join(", ")}.`,
+    `\n${conflicts.length} conflict episodes detected in the chat. By topic: ${[...topicCounts.entries()].map(([t, n]) => `${t} ${n}`).join(", ")}.`,
   );
-  for (const e of episodes.slice(0, 8)) {
+  for (const e of conflicts.slice(0, 8)) {
     digest.push(
       `- ${e.date} (${e.context.days}d, severity ${e.severity}/5, topic ${e.topic}, opened by ${e.openedBy ?? "?"}, ${e.repaired ? `repaired by ${e.closedBy}` : "no clear repair"}): ` +
+        e.excerpts
+          .slice(0, 3)
+          .map((x) => `${x.sender}: "${x.text.slice(0, 180)}"`)
+          .join(" | "),
+    );
+  }
+
+  // The good stretches are given equal weight in the prompt. Fed only the
+  // fights, the model reliably writes a bleaker read than the data supports.
+  digest.push(
+    `\n${connections.length} deep connection moments detected: long, warm, two-sided stretches with no conflict in them.`,
+  );
+  for (const e of connections.slice(0, 8)) {
+    const signals = (e.context.signals ?? []).join(", ");
+    digest.push(
+      `- ${e.date} (${e.messageCount} messages over ${Math.max(1, Math.round((e.endedAt - e.startedAt) / 3600000))}h${signals ? `, ${signals}` : ""}): ` +
         e.excerpts
           .slice(0, 3)
           .map((x) => `${x.sender}: "${x.text.slice(0, 180)}"`)
