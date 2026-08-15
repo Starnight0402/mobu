@@ -394,6 +394,18 @@ async function generateNarrative(
       `${s}: ${x.messages} msgs, ${x.words} words, avg length ${x.avgMessageLength} chars, ${(x.questionRate * 100).toFixed(1)}% questions, ${x.longMessages} long messages, replies avg ${r.avgMinutes}m (median ${r.medianMinutes}m), started ${stats.initiations[s]} conversations, ${stats.doubleTexts[s]} consecutive messages.`,
     );
     digest.push(`${s} top words: ${stats.topWords[s].map(([w, n]) => `${w}(${n})`).join(", ")}`);
+    const t = stats.tone?.[s];
+    const lm = stats.languageMix?.[s];
+    if (t) {
+      digest.push(
+        `${s} tone markers (bilingual English+Hindi lexicon): affection ${t.affection}, repair/apology ${t.repair}, distress ${t.distress}, blame/accusation ${t.accusation}, hurt ${t.hurt}, suspicion ${t.trust}.`,
+      );
+    }
+    if (lm) {
+      digest.push(
+        `${s} writes ${(lm.hinglishShare * 100).toFixed(1)}% Hindi; top Hindi words: ${lm.topHindi.map(([w, n]) => `${w}(${n})`).join(", ") || "none"}.`,
+      );
+    }
   }
   digest.push(
     `Longest streak both texted: ${stats.streaks.longest} days (current ${stats.streaks.current}). Longest silence: ${stats.longestSilence.hours}h.`,

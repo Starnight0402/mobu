@@ -29,6 +29,15 @@ export interface ChatStats {
   topWords: Record<string, Array<[string, number]>>;
   topEmojis: Array<[string, number]>;
   mediaCount: number;
+  languageMix: Record<string, {
+    hinglishShare: number;
+    topHindi: Array<[string, number]>;
+    topEnglish: Array<[string, number]>;
+  }>;
+  tone: Record<string, {
+    affection: number; accusation: number; hurt: number;
+    trust: number; repair: number; distress: number;
+  }>;
 }
 
 // Two-series categorical palette, validated for colour-vision deficiency
@@ -211,6 +220,80 @@ export const ChatStatsDashboard: React.FC<{ stats: ChatStats }> = ({ stats }) =>
           ))}
         </div>
       </Card>
+
+      {stats.languageMix && stats.tone && (
+        <Card title="Language & tone" right={<Legend2 senders={senders} />} delay={0.25}>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {senders.map((s, i) => {
+              const lm = stats.languageMix[s];
+              const t = stats.tone[s];
+              if (!lm || !t) return null;
+              return (
+                <div key={s} className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                  style={{ borderLeft: `3px solid ${SERIES[i]}` }}>
+                  <div className="flex items-baseline justify-between">
+                    <span className="font-display text-sm">{s}</span>
+                    <span className="text-[10px] font-mono text-white/40 tabular-nums">
+                      {(lm.hinglishShare * 100).toFixed(1)}% Hindi
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-white/5 overflow-hidden flex">
+                    <div className="h-full" style={{ width: `${lm.hinglishShare * 100}%`, background: SERIES[i] }} />
+                    <div className="h-full bg-white/15" style={{ width: `${100 - lm.hinglishShare * 100}%` }} />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-[9px] uppercase tracking-wider font-mono text-white/35">Hindi words</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {lm.topHindi.slice(0, 6).map(([w, n]) => (
+                        <span key={w} className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10.5px] text-white/60">
+                          {w}<span className="text-white/25 ml-1 tabular-nums">{n}</span>
+                        </span>
+                      ))}
+                      {lm.topHindi.length === 0 && <span className="text-[10px] text-white/25">—</span>}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <div className="text-[9px] uppercase tracking-wider font-mono text-white/35">Tone markers</div>
+                    {([
+                      ['Affection', t.affection, 'bg-emerald-400'],
+                      ['Repair moves', t.repair, 'bg-sky-400'],
+                      ['Distress', t.distress, 'bg-amber-400'],
+                      ['Blame', t.accusation, 'bg-red-400'],
+                      ['Hurt', t.hurt, 'bg-red-400'],
+                    ] as Array<[string, number, string]>).map(([label, v, color]) => {
+                      // Scaled against the larger of the two people so the
+                      // pair reads as a comparison, not two separate charts.
+                      const peer = senders.map((o) => {
+                        const ot = stats.tone[o];
+                        return label === 'Affection' ? ot.affection
+                          : label === 'Repair moves' ? ot.repair
+                          : label === 'Distress' ? ot.distress
+                          : label === 'Blame' ? ot.accusation : ot.hurt;
+                      });
+                      const max = Math.max(1, ...peer);
+                      return (
+                        <div key={label} className="flex items-center gap-2">
+                          <span className="text-[10.5px] text-white/50 w-20 shrink-0">{label}</span>
+                          <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                            <div className={`h-full rounded-full ${color} opacity-80`} style={{ width: `${(v / max) * 100}%` }} />
+                          </div>
+                          <span className="text-[10px] font-mono text-white/40 w-8 text-right tabular-nums">{v}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-white/30 leading-relaxed">
+            Counted with a bilingual lexicon — English plus romanised Hindi ("bura laga", "naraz",
+            "farak nahi padta", "maafi") — so tone isn't missed just because it was said in Hindi.
+          </p>
+        </Card>
+      )}
     </div>
   );
 };

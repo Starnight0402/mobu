@@ -13,6 +13,8 @@
  * never otherwise.
  */
 
+import { scoreMessage, hinglishRatio, REPAIR_RE, AFFECTION_RE } from "./chatLexicon";
+
 export interface ParsedMessage {
   sender: string;
   text: string;
@@ -139,7 +141,19 @@ export interface ChatStats {
   topWords: Record<string, Array<[string, number]>>;
   topEmojis: Array<[string, number]>;
   mediaCount: number;
+  /** Per-sender split of English vs romanised-Hindi vocabulary. */
+  languageMix: Record<string, { hinglishShare: number; topHindi: Array<[string, number]>; topEnglish: Array<[string, number]> }>;
+  /** Per-sender tone counts from the bilingual lexicon. */
+  tone: Record<
+    string,
+    { affection: number; accusation: number; hurt: number; trust: number; repair: number; distress: number }
+  >;
 }
+
+// Romanised-Hindi vocabulary worth surfacing (the stopword list strips the
+// grammatical glue, so this catches the content words that survive).
+const HINDI_CONTENT =
+  /^(pyaar|pyar|jaan|jaanu|bacha|baccha|khana|khana|ghar|office|neend|so|soja|sona|uthna|yaad|miss|dil|man|mann|zindagi|shaadi|shadi|pareshan|gussa|naraz|naaraz|maaf|maafi|galti|jhoot|bharosa|shak|takleef|dukh|khush|khushi|acha|accha|theek|thik|bura|sach|paisa|paise|kaam|thak|thaka|thaki|bhookh|bhook|chai|pani|garmi|thand|barish|raat|subah|shaam|din|kal|aaj|parso|jaldi|dhyan|tension|masti|bakwas|pagal|paagal|cute|bore|mazaa|maza)$/;
 
 export function computeChatStats(msgs: ParsedMessage[]): ChatStats {
   const senders = [...new Set(msgs.map((m) => m.sender))];
@@ -157,6 +171,13 @@ export function computeChatStats(msgs: ParsedMessage[]): ChatStats {
       longMessages: 0,
     };
     wordFreq[s] = new Map();
+  }
+
+  const tone: ChatStats["tone"] = {};
+  const hinglishSum: Record<string, number> = {};
+  for (const s of senders) {
+    tone[s] = { affection: 0, accusation: 0, hurt: 0, trust: 0, repair: 0, distress: 0 };
+    hinglishSum[s] = 0;
   }
 
   const daily = new Map<string, Map<string, number>>();
@@ -188,6 +209,15 @@ export function computeChatStats(msgs: ParsedMessage[]): ChatStats {
     if (m.text.length > 220) s.longMessages++;
 
     if (!m.isMedia) {
+      const sent = scoreMessage(m.text);
+      if (sent.affection) tone[m.sender].affection++;
+      if (sent.accusation) tone[m.sender].accusation++;
+      if (sent.hurt) tone[m.sender].hurt++;
+      if (sent.trust) tone[m.sender].trust++;
+      if (sent.repair) tone[m.sender].repair++;
+      if (sent.distress) tone[m.sender].distress++;
+      hinglishSum[m.sender] += hinglishRatio(m.text);
+
       for (const raw of words) {
         const w = raw.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
         if (w.length < 3 || STOPWORDS.has(w)) continue;
@@ -289,8 +319,17 @@ export function computeChatStats(msgs: ParsedMessage[]): ChatStats {
       });
 
   const topWords: ChatStats["topWords"] = {};
+  const languageMix: ChatStats["languageMix"] = {};
   for (const s of senders) {
-    topWords[s] = [...wordFreq[s].entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+    const ranked = [...wordFreq[s].entries()].sort((a, b) => b[1] - a[1]);
+    topWords[s] = ranked.slice(0, 12);
+    languageMix[s] = {
+      hinglishShare: bySender[s].messages
+        ? +(hinglishSum[s] / bySender[s].messages).toFixed(3)
+        : 0,
+      topHindi: ranked.filter(([w]) => HINDI_CONTENT.test(w)).slice(0, 10),
+      topEnglish: ranked.filter(([w]) => !HINDI_CONTENT.test(w)).slice(0, 10),
+    };
   }
 
   const start = msgs.length ? msgs[0].sentAt : 0;
@@ -317,6 +356,8 @@ export function computeChatStats(msgs: ParsedMessage[]): ChatStats {
     topWords,
     topEmojis: [...emojiFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12),
     mediaCount: msgs.filter((m) => m.isMedia).length,
+    languageMix,
+    tone,
   };
 }
 
@@ -325,18 +366,6 @@ export function computeChatStats(msgs: ParsedMessage[]): ChatStats {
  * ------------------------------------------------------------------ */
 
 const LONG = 220;
-const VERY_LONG = 400;
-
-// Phrases that reliably mark a real disagreement rather than banter. Kept
-// deliberately narrow: broad terms like "sorry" and "wtf" appear constantly in
-// ordinary affectionate conversation and wreck precision.
-const SERIOUS_RE =
-  /\b(we need to talk|i'?m done|so done|can'?t do this|cant do this|suffocating|you never|you always|not coming from within|scared of (talking|me)|shut off|can'?t fight|cant fight|don'?t trust|dont trust|why are you (scared|weird|like)|staying quiet|staying quite|by myself|dragged for days|hurt me|hurts me|disrespect|unreasonable|ignoring me|feel like running away|perceived as an attack|overspeaking|bothering you|not fair|unfair|fed up|hiding|hide from you|secretive)\b/i;
-
-const REPAIR_RE =
-  /\b(i am (genuinely )?sorry|i'?m sorry|im sorry|forgive|didn'?t mean|didnt mean|my fault|won'?t happen again|wont happen again|i love you|love you so much)\b/i;
-
-const HEAVY_EMOJI_RE = /😭|💔|😔|😞|😤|🙄|😑|😒/;
 
 const TOPIC_PATTERNS: Array<{ topic: string; re: RegExp }> = [
   {
@@ -405,42 +434,83 @@ export function detectConflicts(msgs: ParsedMessage[], stats: ChatStats): Confli
     score: number;
     msgs: ParsedMessage[];
     flagged: ParsedMessage[];
+    qualifies: boolean;
   }
 
   const scored: Scored[] = dayKeys.map((key) => {
     const dayMsgs = byDay.get(key)!;
-    let serious = 0;
-    let veryLong = 0;
-    let long = 0;
+
+    // Message length is deliberately NOT a primary signal. Long messages mark
+    // any serious conversation -- career advice, family history, trip planning
+    // -- and scoring on them flagged all three as fights. What separates an
+    // argument is negativity aimed at the partner, so that carries the weight
+    // and length only amplifies a message already scored negative.
+    const sentiments = dayMsgs.map((m) => scoreMessage(m.text));
+
+    let accusation = 0;
+    let hurt = 0;
+    let trust = 0;
     let repair = 0;
-    let emo = 0;
-    const longBySender = new Map<string, number>();
+    let affection = 0;
+    let negTotal = 0;
+    const negBySender = new Map<string, number>();
     const flagged: ParsedMessage[] = [];
 
-    for (const m of dayMsgs) {
-      const len = m.text.length;
-      const isSerious = SERIOUS_RE.test(m.text);
-      if (len > LONG) {
-        long++;
-        longBySender.set(m.sender, (longBySender.get(m.sender) ?? 0) + 1);
+    dayMsgs.forEach((m, i) => {
+      const s = sentiments[i];
+      if (s.accusation) accusation++;
+      if (s.hurt) hurt++;
+      if (s.trust) trust++;
+      if (s.repair) repair++;
+      if (s.affection) affection++;
+      if (s.negative > 0) {
+        // A long negative message is someone laying out a grievance in full.
+        const weight = s.negative * (m.text.length > LONG ? 1.6 : 1);
+        negTotal += weight;
+        negBySender.set(m.sender, (negBySender.get(m.sender) ?? 0) + weight);
+        flagged.push(m);
       }
-      if (len > VERY_LONG) veryLong++;
-      if (isSerious) serious++;
-      if (REPAIR_RE.test(m.text)) repair++;
-      if (HEAVY_EMOJI_RE.test(m.text)) emo++;
-      if (isSerious || len > LONG) flagged.push(m);
+    });
+
+    // A fight is concentrated, not spread across a day: find the heaviest
+    // 90-minute window rather than summing everything from breakfast to bed.
+    let burst = 0;
+    for (let i = 0; i < dayMsgs.length; i++) {
+      let sum = 0;
+      for (let j = i; j < dayMsgs.length; j++) {
+        if (dayMsgs[j].sentAt - dayMsgs[i].sentAt > 90 * 60 * 1000) break;
+        sum += sentiments[j].negative;
+      }
+      burst = Math.max(burst, sum);
     }
 
-    // Both people writing paragraphs on the same day is the single strongest
-    // signal -- it means an actual back-and-forth, not one person venting.
-    const bothLong = longBySender.size > 1 ? Math.min(...longBySender.values()) : 0;
-    const score = serious * 6 + veryLong * 4 + long * 2 + bothLong * 5 + repair * 1.5 + emo;
-    return { key, score, msgs: dayMsgs, flagged };
+    // Both people being negative is what makes it an argument rather than one
+    // person venting about work or a third party.
+    const mutual = negBySender.size > 1 ? Math.min(...negBySender.values()) : 0;
+
+    // Warmth dampens: a day thick with affection is a couple talking, however
+    // heavy the subject.
+    const affectionRatio = affection / Math.max(1, dayMsgs.length);
+    const damp = Math.max(0.35, 1 - affectionRatio * 2.5);
+
+    const raw =
+      accusation * 5 + hurt * 4 + trust * 2 + burst * 2 + mutual * 1.5 + repair * 0.5;
+    const score = raw * damp;
+
+    // A gate on top of the score, because score alone can be reached by an
+    // emotionally intense but perfectly friendly day (worry about a parent,
+    // venting about work). Something has to be directed AT the partner:
+    // repeated accusation, accusation plus sustained hurt, or a real cluster
+    // of suspicion.
+    const qualifies =
+      accusation >= 2 || (accusation >= 1 && hurt >= 2) || trust >= 4 || hurt >= 5;
+
+    return { key, score, msgs: dayMsgs, flagged, qualifies };
   });
 
-  const HOT = 18;
+  const HOT = 16;
   const MAX_EPISODE_DAYS = 5;
-  const hot = scored.filter((s) => s.score >= HOT);
+  const hot = scored.filter((s) => s.score >= HOT && s.qualifies);
   if (hot.length === 0) return [];
 
   // Merge runs of consecutive (or single-day-gap) hot days into one episode.
@@ -464,7 +534,7 @@ export function detectConflicts(msgs: ParsedMessage[], stats: ChatStats): Confli
     const topic =
       [...topicScores.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "other";
 
-    const repairs = all.filter((m) => REPAIR_RE.test(m.text));
+    const repairs = all.filter((m) => REPAIR_RE.test(m.text.toLowerCase()));
     const dayCount = group.reduce((sum, g) => sum + g.msgs.length, 0);
     const idx = dayKeys.indexOf(group[group.length - 1].key);
     const nextKey = dayKeys[idx + 1];
