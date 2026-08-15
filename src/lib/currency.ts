@@ -9,7 +9,9 @@ const SYMBOLS: Record<string, string> = {
 export const CURRENCIES = Object.keys(SYMBOLS);
 
 export function currencySymbol(code: string): string {
-  return SYMBOLS[code] || '$';
+  // Falls back to the raw code (e.g. "AED 50" for an imported currency this
+  // app doesn't have a symbol for) rather than silently mislabeling it as $.
+  return SYMBOLS[code] || `${code} `;
 }
 
 /** `₹1,240.50` — two decimals, except for zero-decimal currencies like JPY. */

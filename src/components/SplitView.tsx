@@ -4,11 +4,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
 import { CURRENCIES, currencySymbol, formatMoney } from '../lib/currency';
+import { SplitwiseImportModal } from './SplitwiseImportModal';
 import {
   Plus,
   Scale,
   PartyPopper,
   Download,
+  Upload,
   X,
   Trash2,
   Pencil,
@@ -61,6 +63,7 @@ export const SplitView: React.FC = () => {
   const [showSettled, setShowSettled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const defaultCurrency = settings?.currency ?? 'USD';
   const partnerName = balance?.partnerName ?? 'your partner';
@@ -120,15 +123,27 @@ export const SplitView: React.FC = () => {
           <h1 className="text-4xl font-medium tracking-tight dot-matrix">Split</h1>
           <p className="text-white/40 text-[10px] uppercase tracking-widest">Who owes who</p>
         </div>
-        <button
-          onClick={exportCsv}
-          title="Export as CSV"
-          aria-label="Export as CSV"
-          className="flex h-11 w-11 items-center justify-center rounded-full glass text-white/60 transition-all hover:text-white"
-        >
-          <Download size={16} />
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            title="Import from Splitwise"
+            aria-label="Import from Splitwise"
+            className="flex h-11 w-11 items-center justify-center rounded-full glass text-white/60 transition-all hover:text-white"
+          >
+            <Upload size={16} />
+          </button>
+          <button
+            onClick={exportCsv}
+            title="Export as CSV"
+            aria-label="Export as CSV"
+            className="flex h-11 w-11 items-center justify-center rounded-full glass text-white/60 transition-all hover:text-white"
+          >
+            <Download size={16} />
+          </button>
+        </div>
       </header>
+
+      {importOpen && <SplitwiseImportModal onClose={() => setImportOpen(false)} />}
 
       {error && (
         <p className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs text-red-300">

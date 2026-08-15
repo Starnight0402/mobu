@@ -36,6 +36,7 @@ import type * as pushSubscriptions from "../pushSubscriptions.js";
 import type * as relationshipAnalyzer from "../relationshipAnalyzer.js";
 import type * as scheduled from "../scheduled.js";
 import type * as settings from "../settings.js";
+import type * as splitImport from "../splitImport.js";
 import type * as tracking from "../tracking.js";
 import type * as users from "../users.js";
 import type * as widgets from "../widgets.js";
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   relationshipAnalyzer: typeof relationshipAnalyzer;
   scheduled: typeof scheduled;
   settings: typeof settings;
+  splitImport: typeof splitImport;
   tracking: typeof tracking;
   users: typeof users;
   widgets: typeof widgets;
