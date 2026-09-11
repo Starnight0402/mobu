@@ -122,6 +122,67 @@ export const remove = mutation({
   },
 });
 
+/** Wipes every expense and settlement, for starting a fresh import. */
+export const clearAll = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireUserId(ctx);
+    const expenses = await ctx.db.query("expenses").collect();
+    for (const e of expenses) {
+      if (e.receiptStorageId) await ctx.storage.delete(e.receiptStorageId);
+      await ctx.db.delete(e._id);
+    }
+    const settlements = await ctx.db.query("settlements").collect();
+    for (const s of settlements) await ctx.db.delete(s._id);
+    return { expenses: expenses.length, settlements: settlements.length };
+  },
+});
+
+/**
+ * Re-inserts rows in this app's own CSV export shape (see `exportCsv` in
+ * SplitView), so a downloaded export can be edited and uploaded back in.
+ */
+export const importRows = mutation({
+  args: {
+    rows: v.array(
+      v.object({
+        amount: v.number(),
+        category: v.string(),
+        currency: v.string(),
+        splitRatio: v.number(),
+        note: v.optional(v.string()),
+        spentAt: v.number(),
+        paidByMe: v.boolean(),
+        settled: v.boolean(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const partner = await partnerOf(ctx, userId);
+    let inserted = 0;
+    for (const r of args.rows) {
+      if (!(r.amount > 0)) continue;
+      if (r.splitRatio < 0 || r.splitRatio > 100) continue;
+      const payerId = r.paidByMe ? userId : partner?._id;
+      if (!payerId) continue;
+      await ctx.db.insert("expenses", {
+        amount: r.amount,
+        payerId,
+        splitRatio: r.splitRatio,
+        category: r.category.trim() || "General",
+        currency: r.currency,
+        note: r.note,
+        settled: r.settled,
+        spentAt: r.spentAt,
+        settledAt: r.settled ? r.spentAt : undefined,
+      });
+      inserted++;
+    }
+    return { inserted };
+  },
+});
+
 /**
  * Net balance per currency. Positive `net` means your partner owes you.
  *

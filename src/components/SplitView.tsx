@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
 import { CURRENCIES, currencySymbol, formatMoney } from '../lib/currency';
 import { SplitwiseImportModal } from './SplitwiseImportModal';
+import { buildExpenseCsv, parseExpenseCsv } from '../lib/expenseCsv';
+import { saveTextFile } from '../lib/saveFile';
 import {
   Plus,
   Scale,
@@ -23,6 +25,9 @@ import {
   Film,
   Plane,
   Coins,
+  Search,
+  FileUp,
+  AlertTriangle,
 } from 'lucide-react';
 
 type Expense = NonNullable<ReturnType<typeof useExpenses>>[number];
@@ -56,6 +61,8 @@ export const SplitView: React.FC = () => {
   const settings = useQuery(api.settings.get);
   const settleUp = useMutation(api.expenses.settleUp);
   const removeExpense = useMutation(api.expenses.remove);
+  const clearAllExpenses = useMutation(api.expenses.clearAll);
+  const importRows = useMutation(api.expenses.importRows);
 
   const [composerOpen, setComposerOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -68,11 +75,25 @@ export const SplitView: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvNotice, setCsvNotice] = useState<string | null>(null);
+  const csvFileRef = useRef<HTMLInputElement>(null);
 
   const defaultCurrency = settings?.currency ?? 'USD';
   const partnerName = balance?.partnerName ?? 'your partner';
 
-  const visible = showSettled ? expenses : expenses.filter((e) => !e.settled);
+  const searched = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return expenses;
+    return expenses.filter((e) =>
+      [e.category, e.note ?? '', e.payerName, e.currency].some((f) => f.toLowerCase().includes(q)),
+    );
+  }, [expenses, search]);
+
+  const visible = showSettled ? searched : searched.filter((e) => !e.settled);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Expense[]>();
@@ -96,28 +117,54 @@ export const SplitView: React.FC = () => {
     }
   };
 
-  const exportCsv = () => {
-    const rows = [
-      ['Date', 'Category', 'Amount', 'Currency', 'Paid by', 'Payer share %', 'Lent', 'Settled', 'Note'],
-      ...expenses.map((e) => [
-        new Date(e.spentAt).toISOString(),
-        e.category,
-        e.amount.toString(),
-        e.currency,
-        e.payerName,
-        e.splitRatio.toString(),
-        e.lent.toString(),
-        e.settled ? 'yes' : 'no',
-        e.note ?? '',
-      ]),
-    ];
-    const csv = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'mobu-expenses.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+  const exportCsv = async () => {
+    setError(null);
+    try {
+      const csv = buildExpenseCsv(expenses);
+      await saveTextFile('mobu-expenses.csv', csv, 'text/csv');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not export expenses.');
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      return;
+    }
+    setClearing(true);
+    setError(null);
+    try {
+      await clearAllExpenses({});
+      setConfirmClear(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete expenses.');
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const handleCsvFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setCsvNotice(null);
+    setCsvBusy(true);
+    setError(null);
+    try {
+      const text = await file.text();
+      const { rows, error: parseError } = parseExpenseCsv(text);
+      if (parseError) {
+        setError(parseError);
+        return;
+      }
+      const { inserted } = await importRows({ rows });
+      setCsvNotice(`Imported ${inserted} expense${inserted === 1 ? '' : 's'}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not import that file.');
+    } finally {
+      setCsvBusy(false);
+    }
   };
 
   return (
@@ -128,6 +175,22 @@ export const SplitView: React.FC = () => {
           <p className="text-white/40 text-[10px] uppercase tracking-widest">Who owes who</p>
         </div>
         <div className="flex gap-2">
+          <input
+            ref={csvFileRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => void handleCsvFile(e)}
+          />
+          <button
+            onClick={() => csvFileRef.current?.click()}
+            disabled={csvBusy}
+            title="Upload expenses from CSV"
+            aria-label="Upload expenses from CSV"
+            className="flex h-11 w-11 items-center justify-center rounded-full glass text-white/60 transition-all hover:text-white disabled:opacity-40"
+          >
+            <FileUp size={16} />
+          </button>
           <button
             onClick={() => setImportOpen(true)}
             title="Import from Splitwise"
@@ -137,7 +200,7 @@ export const SplitView: React.FC = () => {
             <Upload size={16} />
           </button>
           <button
-            onClick={exportCsv}
+            onClick={() => void exportCsv()}
             title="Export as CSV"
             aria-label="Export as CSV"
             className="flex h-11 w-11 items-center justify-center rounded-full glass text-white/60 transition-all hover:text-white"
@@ -154,6 +217,23 @@ export const SplitView: React.FC = () => {
           {error}
         </p>
       )}
+
+      {csvNotice && (
+        <p className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-xs text-emerald-300">
+          {csvNotice}
+        </p>
+      )}
+
+      <div className="relative">
+        <Search size={15} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search expenses…"
+          className="nothing-input w-full pl-10 text-sm"
+        />
+      </div>
 
       {/* Balance */}
       <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="glass p-6 space-y-4">
@@ -219,6 +299,23 @@ export const SplitView: React.FC = () => {
         >
           {showSettled ? 'All' : 'Open'}
         </button>
+        {expenses.length > 0 && (
+          <button
+            onClick={() => void handleClearAll()}
+            onBlur={() => setConfirmClear(false)}
+            disabled={clearing}
+            title="Delete all expenses"
+            aria-label="Delete all expenses"
+            className={`flex h-12.5 items-center justify-center gap-1.5 rounded-2xl border px-3 text-[10px] uppercase tracking-widest transition-all disabled:opacity-40 ${
+              confirmClear
+                ? 'border-red-500 bg-red-500 text-white'
+                : 'border-red-500/20 bg-red-500/10 text-red-400'
+            }`}
+          >
+            {confirmClear ? <AlertTriangle size={14} /> : <Trash2 size={14} />}
+            {confirmClear ? 'Confirm' : ''}
+          </button>
+        )}
       </div>
 
       {/* Expenses */}
