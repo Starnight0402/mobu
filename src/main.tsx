@@ -6,7 +6,14 @@ import App from './App.tsx';
 import {applyStoredThemeOnBoot} from './hooks/useTheme';
 import {primeAudioOnFirstGesture} from './lib/ringtone';
 import {reloadOnResume} from './lib/nativeReload';
+import {reloadOnNewServiceWorker} from './lib/swUpdate';
 import './index.css';
+
+// Without this, a new deploy's service worker installs and activates in the
+// background (registerSW.js re-registers on every load), but the page
+// already sitting in memory keeps serving the old cached JS until it's
+// reloaded a *second* time -- confusingly making "the update didn't work".
+reloadOnNewServiceWorker();
 
 // Runs before React mounts so there's no flash of the wrong theme.
 applyStoredThemeOnBoot();
