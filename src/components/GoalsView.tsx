@@ -4,6 +4,7 @@ import { api } from '../../convex/_generated/api';
 import { motion, AnimatePresence } from 'motion/react';
 import { Utensils, Plane, Dumbbell, Coffee, Compass, Star, Plus, X, Check, Dices, Trash2 } from 'lucide-react';
 import { Goal } from '../types';
+import { useBackHandler } from '../lib/backButtonStack';
 
 const CATEGORIES = ['adventure', 'cooking', 'fitness', 'travel', 'relaxation'] as const;
 
@@ -19,6 +20,9 @@ export const GoalsView: React.FC = () => {
   const [newTarget, setNewTarget] = useState('5');
   const [rouletteGoal, setRouletteGoal] = useState<Goal | null>(null);
   const [spinning, setSpinning] = useState(false);
+
+  useBackHandler(isAdding, () => setIsAdding(false));
+  useBackHandler(!!rouletteGoal && !spinning, () => setRouletteGoal(null));
 
   const spinRoulette = () => {
     const options = goals.filter((g) => g.current < g.target);
@@ -59,12 +63,15 @@ export const GoalsView: React.FC = () => {
   };
 
   const addGoal = async () => {
-    if (!newTitle || !newTarget) return;
+    const target = parseInt(newTarget, 10);
+    // A target below 1 divided by zero in the progress bar; one in the
+    // thousands rendered a dot per step.
+    if (!newTitle.trim() || !(target >= 1) || target > 100) return;
 
     await createGoal({
-      title: newTitle,
+      title: newTitle.trim(),
       category: newCategory,
-      target: parseInt(newTarget, 10),
+      target,
       current: 0,
     });
 
@@ -221,11 +228,14 @@ export const GoalsView: React.FC = () => {
                     onChange={e => setNewTarget(e.target.value)}
                     className="nothing-input w-full"
                     min="1"
+                    max="100"
+                    inputMode="numeric"
                   />
                 </div>
                 <button 
                   onClick={addGoal}
-                  className="w-full py-4 bg-nothing-purple text-white rounded-2xl font-medium uppercase tracking-widest text-xs"
+                  disabled={!newTitle.trim() || !(parseInt(newTarget, 10) >= 1) || parseInt(newTarget, 10) > 100}
+                  className="w-full py-4 bg-nothing-purple text-white rounded-2xl font-medium uppercase tracking-widest text-xs disabled:opacity-40"
                 >
                   Create Goal
                 </button>

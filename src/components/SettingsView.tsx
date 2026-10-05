@@ -9,6 +9,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useNotifications } from './NotificationProvider';
 import { haptic, hapticsEnabled, hapticsSupported, setHapticsEnabled } from '../lib/haptics';
 import { compressImage } from '../lib/image';
+import { saveTextFile } from '../lib/saveFile';
 
 export const SettingsView: React.FC = () => {
   const remoteSettings = useQuery(api.settings.get);
@@ -28,6 +29,7 @@ export const SettingsView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,6 +37,7 @@ export const SettingsView: React.FC = () => {
     e.target.value = '';
     if (!file) return;
     setAvatarUploading(true);
+    setStatus(null);
     try {
       // Small and square-ish — a profile picture never needs to be more
       // than a few hundred px across, so compress much harder than a memory photo.
@@ -45,11 +48,13 @@ export const SettingsView: React.FC = () => {
         headers: { 'Content-Type': blob.type },
         body: blob,
       });
+      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       const { storageId } = await res.json();
       await setAvatar({ storageId });
       haptic('success');
     } catch (err) {
       console.error('Avatar upload failed', err);
+      setStatus({ kind: 'error', text: "Couldn't update your profile picture — try again." });
     } finally {
       setAvatarUploading(false);
     }
@@ -77,21 +82,33 @@ export const SettingsView: React.FC = () => {
 
   const handleSave = async () => {
     setLoading(true);
-    await saveSettings(settings);
-    setLoading(false);
+    setStatus(null);
+    try {
+      await saveSettings(settings);
+      haptic('success');
+      setStatus({ kind: 'ok', text: 'Settings saved.' });
+    } catch (err) {
+      console.error('Saving settings failed', err);
+      setStatus({ kind: 'error', text: "Couldn't save your settings — try again." });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleExport = async () => {
     setExporting(true);
     try {
       const data = await convex.query(api.dataExport.all, {});
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `mobu-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // saveTextFile, not a blob <a download>: the Android app's WebView
+      // swallows those silently, so the backup button did nothing there.
+      await saveTextFile(
+        `mobu-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        JSON.stringify(data, null, 2),
+        'application/json',
+      );
+    } catch (err) {
+      console.error('Export failed', err);
+      setStatus({ kind: 'error', text: "Couldn't export your data — try again." });
     } finally {
       setExporting(false);
     }
@@ -154,6 +171,7 @@ export const SettingsView: React.FC = () => {
           </div>
           <button
             onClick={() => signOut()}
+            aria-label="Sign out"
             className="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors"
             title="Sign out"
           >
@@ -167,6 +185,9 @@ export const SettingsView: React.FC = () => {
           </label>
           <button
             onClick={toggleTheme}
+            role="switch"
+            aria-checked={theme === 'light'}
+            aria-label="Light mode"
             className={`relative w-14 h-8 rounded-full border transition-colors ${
               theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-nothing-purple/20 border-nothing-purple/40'
             }`}
@@ -300,6 +321,19 @@ export const SettingsView: React.FC = () => {
         >
           <Download size={16} /> {exporting ? 'Preparing…' : 'Download All Our Data'}
         </button>
+
+        {status && (
+          <p
+            role="status"
+            className={`rounded-xl border px-3 py-2 text-xs ${
+              status.kind === 'ok'
+                ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
+                : 'border-red-500/20 bg-red-500/10 text-red-300'
+            }`}
+          >
+            {status.text}
+          </p>
+        )}
       </div>
     </div>
   );

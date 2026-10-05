@@ -3,6 +3,7 @@ import { useMutation, useQuery } from 'convex/react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
+import { useBackHandler } from '../lib/backButtonStack';
 import { formatMoney } from '../lib/currency';
 import { Avatar, CoupleAvatars } from './Avatar';
 import {
@@ -279,6 +280,7 @@ const LogDetailSheet: React.FC<{
   onDelete: () => Promise<void>;
 }> = ({ entry, onClose, onDelete }) => {
   const updateTracking = useMutation(api.tracking.update);
+  useBackHandler(true, onClose);
 
   const [editing, setEditing] = useState(false);
   const [category, setCategory] = useState(entry.category ?? '');

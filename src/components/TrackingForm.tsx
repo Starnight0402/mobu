@@ -56,8 +56,23 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    if (loading) return;
     setError(null);
+    // Mood is picked from buttons, so the browser's `required` can't catch an
+    // empty choice — without this it sent NaN to the server.
+    if (type === 'mood' && !value) {
+      setError('Pick how you’re feeling first.');
+      return;
+    }
+    if (type === 'activity' && !category.trim()) {
+      setError('Choose or type an activity first.');
+      return;
+    }
+    if (type === 'money' && !(parseFloat(totalAmount) > 0)) {
+      setError('Enter an amount greater than zero.');
+      return;
+    }
+    setLoading(true);
     try {
       if (type === 'money') {
         await addExpense({
@@ -102,6 +117,7 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
           <button
             key={t.id}
             onClick={() => {
+              setError(null);
               setType(t.id as TrackingType);
               setValue('');
               setCategory('');
@@ -119,7 +135,7 @@ export const TrackingForm: React.FC<{ onSuccess: () => void }> = ({ onSuccess })
 
       <form onSubmit={handleSubmit} className="glass p-6 space-y-6">
         <div className="space-y-6">
-          <p className="text-[8px] uppercase tracking-[0.2em] text-white/20 text-center">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-white/30 text-center">
             Logging as <span className="text-nothing-purple">{currentUser?.name}</span>
           </p>
 

@@ -52,9 +52,46 @@ export default function App() {
   );
 }
 
+const VALID_TABS = new Set([
+  'home', 'track', 'chat', 'call', 'memories', 'timeline', 'goals', 'capsules', 'insights',
+  'analyzer', 'fights', 'map', 'stats', 'split', 'logs', 'notifications', 'settings',
+]);
+
+function tabFromHash(): string {
+  const tab = window.location.hash.replace(/^#\/?/, '');
+  return VALID_TABS.has(tab) ? tab : 'home';
+}
+
+/**
+ * The active tab lives in the URL hash so a refresh (or pull-to-refresh, or an
+ * OTA reload) lands back on the same screen instead of Home, and the browser's
+ * back button walks tab history.
+ */
+function useHashTab(): [string, (tab: string) => void] {
+  const [activeTab, setTab] = useState(tabFromHash);
+
+  useEffect(() => {
+    const onPop = () => setTab(tabFromHash());
+    window.addEventListener('popstate', onPop);
+    window.addEventListener('hashchange', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      window.removeEventListener('hashchange', onPop);
+    };
+  }, []);
+
+  const setActiveTab = useCallback((tab: string) => {
+    const next = VALID_TABS.has(tab) ? tab : 'home';
+    setTab(next);
+    if (tabFromHash() !== next) window.history.pushState(null, '', `#/${next}`);
+  }, []);
+
+  return [activeTab, setActiveTab];
+}
+
 function AuthenticatedApp() {
   const currentUser = useQuery(api.users.current);
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useHashTab();
 
   // NotificationProvider needs to drive navigation (a tapped notification has
   // to land on the right screen), so it wraps the shell rather than sitting
@@ -136,6 +173,12 @@ function AppShell({
   useEffect(() => {
     markTabRead(activeTab);
   }, [activeTab, markTabRead]);
+
+  // A new screen starts at the top rather than inheriting the previous one's
+  // scroll offset.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeTab]);
 
   // Any open modal/sheet gets first refusal (see useBackHandler call sites);
   // otherwise back goes to Home, and minimizes rather than exiting once

@@ -6,6 +6,7 @@ import { WidgetConfig, WidgetSize } from '../types';
 import { TogetherCalendar } from './TogetherCalendar';
 import { useLightbox } from './Lightbox';
 import { CoupleAvatars } from './Avatar';
+import { currencySymbol } from '../lib/currency';
 import {
   Wallet,
   Smile,
@@ -86,10 +87,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       ? widgetsDoc.map((w) => ({ id: w.widgetId, size: w.size, order: w.order }))
       : DEFAULT_WIDGETS;
 
-  const getCurrencySymbol = (code: string) => {
-    const symbols: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', INR: '₹', JPY: '¥' };
-    return symbols[code] || '$';
-  };
+  const getCurrencySymbol = currencySymbol;
 
   const cycleSize = (id: string) => {
     const sizes: WidgetSize[] = ['small', 'wide', 'tall', 'large'];

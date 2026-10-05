@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Swords, Plus, X, Check, Trash2, User } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
+import { useBackHandler } from '../lib/backButtonStack';
 
 const SEVERITY_LABELS = ['Minor tiff', 'Small spat', 'Real argument', 'Big fight', 'Major blowup'];
 
@@ -21,6 +22,9 @@ export const FightLogView: React.FC = () => {
   const [initiatedBy, setInitiatedBy] = useState<Id<'users'> | undefined>(undefined);
   const [resolvingId, setResolvingId] = useState<Id<'fights'> | null>(null);
   const [resolutionNote, setResolutionNote] = useState('');
+
+  useBackHandler(isAdding, () => setIsAdding(false));
+  useBackHandler(!!resolvingId, () => setResolvingId(null));
 
   const addFight = async () => {
     if (!description.trim()) return;

@@ -27,7 +27,14 @@ export const PullToRefresh: React.FC<{ children: React.ReactNode }> = ({ childre
       // Views with their own drag/pan gesture (the 3D Hall of Memories'
       // sphere, most notably) opt out — a vertical drag there shouldn't
       // double as a pull-to-refresh.
-      if (window.scrollY > 0 || refreshingRef.current || target?.closest('[data-no-pull-refresh]')) {
+      // Also opt out of anything inside a modal/sheet or a text field: the page
+      // behind a full-screen modal is still at scrollY 0, so a drag inside the
+      // form used to reload the app and wipe whatever was being typed.
+      if (
+        window.scrollY > 0 ||
+        refreshingRef.current ||
+        target?.closest('[data-no-pull-refresh], input, textarea, select, [role="dialog"], .fixed')
+      ) {
         startY.current = null;
         return;
       }

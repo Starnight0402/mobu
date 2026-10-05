@@ -3,6 +3,7 @@ import { useMutation, useQuery } from 'convex/react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
+import { useBackHandler } from '../lib/backButtonStack';
 import { CURRENCIES, currencySymbol, formatMoney } from '../lib/currency';
 import { SplitwiseImportModal } from './SplitwiseImportModal';
 import { buildExpenseCsv, parseExpenseCsv } from '../lib/expenseCsv';
@@ -443,7 +444,9 @@ const Sheet: React.FC<{ title: string; onClose: () => void; children: React.Reac
   title,
   onClose,
   children,
-}) => (
+}) => {
+  useBackHandler(true, onClose);
+  return (
   <>
     <motion.div
       initial={{ opacity: 0 }}
@@ -474,7 +477,8 @@ const Sheet: React.FC<{ title: string; onClose: () => void; children: React.Reac
       {children}
     </motion.div>
   </>
-);
+  );
+};
 
 const ExpenseDetailSheet: React.FC<{
   expense: Expense;

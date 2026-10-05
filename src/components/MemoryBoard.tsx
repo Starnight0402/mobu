@@ -7,6 +7,7 @@ import { compressImage } from '../lib/image';
 import { reverseGeocode } from '../lib/geocode';
 import { SHADOW_MAP } from '../lib/memoryCardStyle';
 import { useLightbox } from './Lightbox';
+import { useBackHandler } from '../lib/backButtonStack';
 import { LocationPickerModal } from './LocationPickerModal';
 import { MemorySphereView, MemorySphereHandle } from './MemorySphereView';
 import { Plus, Maximize2, X, Edit2, Trash2, Upload, Save, Waypoints, LayoutGrid, MapPin, MapPinned, Loader2 } from 'lucide-react';
@@ -39,35 +40,68 @@ export const MemoryBoard: React.FC = () => {
   const { openImage } = useLightbox();
 
   const [isAdding, setIsAdding] = useState(false);
-  const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
+  // Held by id and resolved against the live query, so the detail view always
+  // shows what's actually saved (a snapshot went stale after every edit and
+  // lost its image URL).
+  const [selectedId, setSelectedId] = useState<Id<'memories'> | null>(null);
+  const selectedMemory = useMemo(
+    () => (selectedId ? memories.find((m) => m._id === selectedId) ?? null : null),
+    [memories, selectedId],
+  );
+  const setSelectedMemory = (m: Memory | null) => setSelectedId(m ? m._id : null);
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<'web' | 'grid'>('web');
   const [uploading, setUploading] = useState(false);
   const [locating, setLocating] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState<MemoryFormState>({});
 
   const sphereRef = useRef<MemorySphereHandle>(null);
 
+  // Functional updates only: a handler that spreads the render-time formData
+  // can clobber a concurrent update (an upload finishing, a geocode landing)
+  // with a stale copy.
+  const patch = (p: Partial<MemoryFormState>) => setFormData((prev) => ({ ...prev, ...p }));
+
+  const formOpen = isAdding || isEditing;
+  const modalOpen = formOpen || !!selectedMemory;
+  const closeModal = () => {
+    setSelectedId(null);
+    setIsAdding(false);
+    setIsEditing(false);
+    setFormError(null);
+  };
+  useBackHandler(showMapPicker, () => setShowMapPicker(false));
+  useBackHandler(modalOpen && !showMapPicker, closeModal);
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
     setUploading(true);
+    setFormError(null);
     try {
       const blob = await compressImage(file);
-      setFormData((prev) => ({ ...prev, imageUrl: URL.createObjectURL(blob) }));
+      // Drop any previous upload's id so a failed re-upload can't leave the
+      // old photo attached to the new preview.
+      setFormData((prev) => ({ ...prev, imageUrl: URL.createObjectURL(blob), imageStorageId: undefined }));
       const uploadUrl = await generateUploadUrl();
       const res = await fetch(uploadUrl, {
         method: 'POST',
         headers: { 'Content-Type': blob.type },
         body: blob,
       });
+      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       const { storageId } = await res.json();
       setFormData((prev) => ({ ...prev, imageStorageId: storageId }));
     } catch (err) {
       console.error('Image upload failed', err);
+      setFormData((prev) => ({ ...prev, imageUrl: '' }));
+      setFormError("Couldn't upload that photo — check your connection and try again.");
     } finally {
       setUploading(false);
     }
@@ -81,7 +115,7 @@ export const MemoryBoard: React.FC = () => {
         const { latitude: lat, longitude: lng } = pos.coords;
         setFormData((prev) => ({ ...prev, lat, lng }));
         const place = await reverseGeocode(lat, lng);
-        if (place) setFormData((prev) => ({ ...prev, location: place }));
+        if (place) patch({ location: place });
         setLocating(false);
       },
       () => setLocating(false),
@@ -94,16 +128,25 @@ export const MemoryBoard: React.FC = () => {
   };
 
   const saveMemory = async () => {
+    if (saving) return;
     const isNew = !formData._id;
+    if (!formData.title?.trim()) {
+      setFormError('Give this memory a title.');
+      return;
+    }
+    if (!formData.imageUrl?.trim()) {
+      setFormError('Add a photo or an image URL first.');
+      return;
+    }
     // A blob: preview URL is only valid in this tab — never persist it as
     // the stored imageUrl (imageStorageId, set once upload finishes, is
     // what actually gets displayed once saved).
     const isBlobPreview = formData.imageUrl?.startsWith('blob:');
 
     const payload = {
-      title: formData.title || '',
+      title: formData.title.trim(),
       description: formData.description,
-      imageUrl: isBlobPreview ? undefined : formData.imageUrl || `https://picsum.photos/seed/${Math.random()}/1200/800`,
+      imageUrl: isBlobPreview ? undefined : formData.imageUrl,
       imageStorageId: formData.imageStorageId,
       category: formData.category,
       location: formData.location,
@@ -123,25 +166,34 @@ export const MemoryBoard: React.FC = () => {
       bgImageOverlay: formData.bgImageOverlay || undefined,
     };
 
-    if (isNew) {
-      await createMemory(payload);
-    } else {
-      await updateMemory({ id: formData._id as Id<'memories'>, ...payload });
-    }
-
-    setIsAdding(false);
-    setIsEditing(false);
-    if (!isNew) {
-      setSelectedMemory({ ...selectedMemory, ...payload } as Memory);
+    setSaving(true);
+    setFormError(null);
+    try {
+      if (isNew) {
+        await createMemory(payload);
+      } else {
+        await updateMemory({ id: formData._id as Id<'memories'>, ...payload });
+      }
+      setIsAdding(false);
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Saving memory failed', err);
+      setFormError(err instanceof Error ? err.message : "Couldn't save — try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
   const deleteMemory = async () => {
     if (!selectedMemory) return;
     if (confirm('Are you sure you want to delete this memory?')) {
-      await removeMemory({ id: selectedMemory._id });
-      setSelectedMemory(null);
-      setIsEditing(false);
+      try {
+        await removeMemory({ id: selectedMemory._id });
+        closeModal();
+      } catch (err) {
+        console.error('Delete failed', err);
+        alert("Couldn't delete that memory — try again.");
+      }
     }
   };
 
@@ -165,11 +217,13 @@ export const MemoryBoard: React.FC = () => {
       shadowEffect: 'xl',
       bgImageOverlay: '',
     });
+    setFormError(null);
     setIsAdding(true);
   };
 
   const openEditMode = () => {
     setFormData(selectedMemory || {});
+    setFormError(null);
     setIsEditing(true);
   };
 
@@ -185,13 +239,13 @@ export const MemoryBoard: React.FC = () => {
   );
 
   const renderForm = () => (
-    <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
+    <div data-no-auto-reload className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Title</label>
         <input
           type="text"
           value={formData.title || ''}
-          onChange={e => setFormData({...formData, title: e.target.value})}
+          onChange={e => patch({ title: e.target.value})}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30"
         />
       </div>
@@ -199,7 +253,7 @@ export const MemoryBoard: React.FC = () => {
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Description</label>
         <textarea
           value={formData.description || ''}
-          onChange={e => setFormData({...formData, description: e.target.value})}
+          onChange={e => patch({ description: e.target.value})}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 h-24 resize-none"
         />
       </div>
@@ -210,7 +264,7 @@ export const MemoryBoard: React.FC = () => {
           value={toDatetimeLocalValue(formData.memoryDate ?? formData._creationTime ?? Date.now())}
           onChange={e => {
             const ms = e.target.valueAsNumber;
-            if (!Number.isNaN(ms)) setFormData({ ...formData, memoryDate: ms });
+            if (!Number.isNaN(ms)) patch({ memoryDate: ms });
           }}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 scheme-dark"
         />
@@ -223,7 +277,7 @@ export const MemoryBoard: React.FC = () => {
             type="text"
             placeholder="https://..."
             value={formData.imageUrl || ''}
-            onChange={e => setFormData({...formData, imageUrl: e.target.value})}
+            onChange={e => patch({ imageUrl: e.target.value})}
             className="flex-1 bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm"
           />
           <label className="flex items-center justify-center bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl px-4 cursor-pointer transition-colors">
@@ -243,7 +297,7 @@ export const MemoryBoard: React.FC = () => {
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Category</label>
           <select
             value={formData.category || 'photo'}
-            onChange={e => setFormData({...formData, category: e.target.value as Memory['category']})}
+            onChange={e => patch({ category: e.target.value as Memory['category']})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 appearance-none"
           >
             {CATEGORIES.map(c => <option key={c} value={c}>{c[0].toUpperCase() + c.slice(1)}</option>)}
@@ -258,7 +312,7 @@ export const MemoryBoard: React.FC = () => {
               type="text"
               placeholder="e.g. Paris, France"
               value={formData.location || ''}
-              onChange={e => setFormData({...formData, location: e.target.value})}
+              onChange={e => patch({ location: e.target.value})}
               className="flex-1 bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm"
             />
             <button
@@ -290,8 +344,8 @@ export const MemoryBoard: React.FC = () => {
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Card Width</label>
           <input
             type="number"
-            value={formData.cardWidth || 220}
-            onChange={e => setFormData({...formData, cardWidth: Number(e.target.value)})}
+            value={formData.cardWidth ?? ''}
+            onChange={e => patch({ cardWidth: e.target.value === '' ? undefined : Number(e.target.value) })}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30"
           />
         </div>
@@ -299,8 +353,8 @@ export const MemoryBoard: React.FC = () => {
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Card Height</label>
           <input
             type="number"
-            value={formData.cardHeight || 280}
-            onChange={e => setFormData({...formData, cardHeight: Number(e.target.value)})}
+            value={formData.cardHeight ?? ''}
+            onChange={e => patch({ cardHeight: e.target.value === '' ? undefined : Number(e.target.value) })}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30"
           />
         </div>
@@ -311,8 +365,8 @@ export const MemoryBoard: React.FC = () => {
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Text Size (px)</label>
           <input
             type="number"
-            value={formData.textSize || 14}
-            onChange={e => setFormData({...formData, textSize: Number(e.target.value)})}
+            value={formData.textSize ?? ''}
+            onChange={e => patch({ textSize: e.target.value === '' ? undefined : Number(e.target.value) })}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30"
           />
         </div>
@@ -320,7 +374,7 @@ export const MemoryBoard: React.FC = () => {
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Font Family</label>
           <select
             value={formData.fontFamily || "'Caveat', cursive"}
-            onChange={e => setFormData({...formData, fontFamily: e.target.value})}
+            onChange={e => patch({ fontFamily: e.target.value})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30 appearance-none"
           >
             {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -335,7 +389,7 @@ export const MemoryBoard: React.FC = () => {
             <input
               type="color"
               value={formData.textColor || '#000000'}
-              onChange={e => setFormData({...formData, textColor: e.target.value})}
+              onChange={e => patch({ textColor: e.target.value})}
               className="w-10 h-10 rounded cursor-pointer bg-transparent border-0 p-0"
             />
             <span className="text-sm text-white/80 font-mono">{formData.textColor || '#000000'}</span>
@@ -347,7 +401,7 @@ export const MemoryBoard: React.FC = () => {
             <input
               type="color"
               value={formData.bgColor || '#f8f8f8'}
-              onChange={e => setFormData({...formData, bgColor: e.target.value})}
+              onChange={e => patch({ bgColor: e.target.value})}
               className="w-10 h-10 rounded cursor-pointer bg-transparent border-0 p-0"
             />
             <span className="text-sm text-white/80 font-mono">{formData.bgColor || '#f8f8f8'}</span>
@@ -360,7 +414,7 @@ export const MemoryBoard: React.FC = () => {
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Border Style</label>
           <select
             value={formData.borderStyle || 'none'}
-            onChange={e => setFormData({...formData, borderStyle: e.target.value})}
+            onChange={e => patch({ borderStyle: e.target.value})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30 appearance-none"
           >
             <option value="none">None</option>
@@ -374,8 +428,8 @@ export const MemoryBoard: React.FC = () => {
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Border Width (px)</label>
           <input
             type="number"
-            value={formData.borderWidth || 0}
-            onChange={e => setFormData({...formData, borderWidth: Number(e.target.value)})}
+            value={formData.borderWidth ?? ''}
+            onChange={e => patch({ borderWidth: e.target.value === '' ? undefined : Number(e.target.value) })}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30"
           />
         </div>
@@ -388,7 +442,7 @@ export const MemoryBoard: React.FC = () => {
             <input
               type="color"
               value={formData.borderColor || '#000000'}
-              onChange={e => setFormData({...formData, borderColor: e.target.value})}
+              onChange={e => patch({ borderColor: e.target.value})}
               className="w-10 h-10 rounded cursor-pointer bg-transparent border-0 p-0"
             />
             <span className="text-sm text-white/80 font-mono">{formData.borderColor || '#000000'}</span>
@@ -398,7 +452,7 @@ export const MemoryBoard: React.FC = () => {
           <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Shadow Effect</label>
           <select
             value={formData.shadowEffect || 'xl'}
-            onChange={e => setFormData({...formData, shadowEffect: e.target.value})}
+            onChange={e => patch({ shadowEffect: e.target.value})}
             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-white/30 appearance-none"
           >
             <option value="none">None</option>
@@ -417,7 +471,7 @@ export const MemoryBoard: React.FC = () => {
           type="text"
           placeholder="https://..."
           value={formData.bgImageOverlay || ''}
-          onChange={e => setFormData({...formData, bgImageOverlay: e.target.value})}
+          onChange={e => patch({ bgImageOverlay: e.target.value})}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 text-sm"
         />
       </div>
@@ -506,7 +560,7 @@ export const MemoryBoard: React.FC = () => {
         </div>
       )}
 
-      {viewMode === 'web' && (
+      {viewMode === 'web' && !formOpen && (
         <MemorySphereView ref={sphereRef} memories={sortedMemories} onSelect={setSelectedMemory} />
       )}
 
@@ -525,11 +579,7 @@ export const MemoryBoard: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 bg-black/95 backdrop-blur-md"
-              onClick={() => {
-                setSelectedMemory(null);
-                setIsAdding(false);
-                setIsEditing(false);
-              }}
+              onClick={closeModal}
             />
             {/* Phone gets a true full-screen sheet: in the old centred dialog
                 the image pane was `flex-1` inside a column whose other half
@@ -616,7 +666,7 @@ export const MemoryBoard: React.FC = () => {
                         <button onClick={deleteMemory} className="w-8 h-8 flex items-center justify-center rounded-full bg-red-500/20 hover:bg-red-500/40 text-red-400 transition-colors"><Trash2 size={14} /></button>
                       </>
                     )}
-                    <button onClick={() => { setSelectedMemory(null); setIsAdding(false); setIsEditing(false); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"><X size={16} /></button>
+                    <button onClick={closeModal} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"><X size={16} /></button>
                   </div>
                 </div>
 
@@ -624,14 +674,17 @@ export const MemoryBoard: React.FC = () => {
                   {isEditing || isAdding ? (
                     <>
                       {renderForm()}
+                      {formError && (
+                        <p role="alert" className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{formError}</p>
+                      )}
                       <div className="pt-6 mt-auto">
                         <button
                           onClick={saveMemory}
-                          disabled={uploading}
+                          disabled={uploading || saving}
                           className="w-full py-4 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                         >
-                          {uploading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                          {uploading ? 'Uploading…' : isAdding ? 'Add to Web' : 'Save Changes'}
+                          {uploading || saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                          {uploading ? 'Uploading…' : saving ? 'Saving…' : isAdding ? 'Add to Web' : 'Save Changes'}
                         </button>
                       </div>
                     </>

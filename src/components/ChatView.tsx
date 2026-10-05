@@ -22,6 +22,8 @@ export const ChatView: React.FC = () => {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -44,6 +46,7 @@ export const ChatView: React.FC = () => {
   const uploadBlob = async (blob: Blob): Promise<Id<'_storage'>> => {
     const uploadUrl = await generateUploadUrl();
     const res = await fetch(uploadUrl, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
+    if (!res.ok) throw new Error(`Upload failed (${res.status})`);
     const { storageId } = (await res.json()) as { storageId: Id<'_storage'> };
     return storageId;
   };
@@ -52,12 +55,18 @@ export const ChatView: React.FC = () => {
     e.preventDefault();
     if (!text.trim() || sending) return;
     setSending(true);
+    setError(null);
     try {
       await sendMessage({ text: text.trim() });
       setText('');
       haptic('tap');
+    } catch (err) {
+      console.error('Send failed', err);
+      setError("Message didn't send — tap send to retry.");
     } finally {
       setSending(false);
+      // Keep the keyboard up so you can keep typing.
+      inputRef.current?.focus();
     }
   };
 
@@ -66,10 +75,14 @@ export const ChatView: React.FC = () => {
     if (!file) return;
     e.target.value = '';
     setSending(true);
+    setError(null);
     try {
       const blob = await compressImage(file, 1200, 0.8);
       const storageId = await uploadBlob(blob);
       await sendMessage({ imageStorageId: storageId });
+    } catch (err) {
+      console.error('Photo send failed', err);
+      setError("Couldn't send that photo — try again.");
     } finally {
       setSending(false);
     }
@@ -79,15 +92,21 @@ export const ChatView: React.FC = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
+      setError(null);
       chunksRef.current = [];
       recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        // Safari records mp4/aac, not webm — label the blob with what the
+        // recorder actually produced or it won't play back.
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
         setSending(true);
         try {
           const storageId = await uploadBlob(blob);
           await sendMessage({ voiceStorageId: storageId });
+        } catch (err) {
+          console.error('Voice note failed', err);
+          setError("Couldn't send that voice note — try again.");
         } finally {
           setSending(false);
         }
@@ -98,6 +117,7 @@ export const ChatView: React.FC = () => {
       haptic('select');
     } catch (err) {
       console.error('Microphone access denied', err);
+      setError('Microphone access is blocked — allow it in your browser or app settings.');
     }
   };
 
@@ -204,12 +224,18 @@ export const ChatView: React.FC = () => {
         className="fixed inset-x-0 z-20 px-4 sm:px-6"
         style={{ bottom: 'max(6rem, calc(env(safe-area-inset-bottom) + 5rem))' }}
       >
+        {error && (
+          <p role="alert" className="mx-auto mb-2 max-w-4xl rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            {error}
+          </p>
+        )}
         <form onSubmit={handleSend} className="glass mx-auto flex max-w-4xl items-center gap-2 p-2">
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImagePick} />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={sending || recording}
+            aria-label="Send a photo"
             className="w-11 h-11 flex-shrink-0 rounded-full bg-white/5 hover:bg-white/10 text-white/60 flex items-center justify-center transition-colors disabled:opacity-40"
           >
             <ImageIcon size={16} />
@@ -218,6 +244,7 @@ export const ChatView: React.FC = () => {
             type="button"
             onClick={recording ? stopRecording : startRecording}
             disabled={sending}
+            aria-label={recording ? 'Stop recording' : 'Record a voice note'}
             className={`w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 ${
               recording ? 'bg-red-500 text-white animate-pulse' : 'bg-white/5 hover:bg-white/10 text-white/60'
             }`}
@@ -229,7 +256,10 @@ export const ChatView: React.FC = () => {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Message…"
-            disabled={sending || recording}
+            disabled={recording}
+            ref={inputRef}
+            enterKeyHint="send"
+            autoComplete="off"
             /* min-w-0: flex items default to min-width:auto, which refuses to
                shrink below the placeholder/value's natural width — on Android
                that width can exceed the row and shove the send button off
@@ -239,6 +269,7 @@ export const ChatView: React.FC = () => {
           <button
             type="submit"
             disabled={sending || recording || !text.trim()}
+            aria-label="Send message"
             className="w-11 h-11 flex-shrink-0 rounded-full bg-nothing-purple text-white flex items-center justify-center hover:brightness-110 active:scale-95 transition-all disabled:opacity-40"
           >
             {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}

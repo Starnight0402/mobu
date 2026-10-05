@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { Capsule } from '../types';
+import { useBackHandler } from '../lib/backButtonStack';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lock, Unlock, Mail, Image as ImageIcon, Mic, Video, X, Plus } from 'lucide-react';
 
@@ -16,6 +17,9 @@ export const CapsulesView: React.FC = () => {
   const [newTitle, setNewTitle] = useState('');
   const [newType, setNewType] = useState<typeof CAPSULE_TYPES[number]>('letter');
   const [newDate, setNewDate] = useState('');
+
+  useBackHandler(isAdding, () => setIsAdding(false));
+  useBackHandler(!!selectedCapsule, () => setSelectedCapsule(null));
 
   const getIcon = (type: string) => {
     switch (type) {

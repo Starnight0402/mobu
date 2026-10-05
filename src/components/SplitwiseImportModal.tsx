@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { X, Upload, Loader2, ArrowRight, AlertTriangle, Check } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
+import { useBackHandler } from '../lib/backButtonStack';
 import { formatMoney } from '../lib/currency';
 import { parseSplitwiseCsv, computeCarryover, type SplitwiseParseResult } from '../lib/splitwiseImport';
 
@@ -113,6 +114,11 @@ export const SplitwiseImportModal: React.FC<{ onClose: () => void }> = ({ onClos
     setResult({ expenses: expenseRows.length, settlements: settlementRows.length, carryover: carryoverRows.length });
     setStage('done');
   };
+
+  // Back is ignored mid-import, same as the backdrop and close button.
+  useBackHandler(true, () => {
+    if (stage !== 'importing') onClose();
+  });
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
