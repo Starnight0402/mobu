@@ -29,7 +29,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../convex/_generated/api';
 
 const MiniWorldView = React.lazy(() =>
-  import('./components/MiniWorldView').then((m) => ({ default: m.MiniWorldView })),
+  import('./components/mini/MiniWorldView').then((m) => ({ default: m.MiniWorldView })),
 );
 
 export default function App() {
