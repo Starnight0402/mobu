@@ -19,6 +19,7 @@ import {
   Bell,
   Brain,
   Swords,
+  Heart,
   LucideIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -60,6 +61,7 @@ const MORE_TABS: TabDef[] = [
   { id: 'insights', icon: Sparkles, label: 'Insights' },
   { id: 'analyzer', icon: Brain, label: 'Analyzer' },
   { id: 'fights', icon: Swords, label: 'Fights' },
+  { id: 'mini', icon: Heart, label: 'Mini us' },
   { id: 'goals', icon: Target, label: 'Goals' },
   { id: 'capsules', icon: Lock, label: 'Capsules' },
   { id: 'stats', icon: BarChart2, label: 'Stats' },

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { Authenticated, Unauthenticated, AuthLoading, useQuery } from 'convex/react';
 import { Navigation } from './components/Navigation';
 import { PullToRefresh } from './components/PullToRefresh';
@@ -28,6 +28,10 @@ import { NotificationsView } from './components/NotificationsView';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../convex/_generated/api';
 
+const MiniWorldView = React.lazy(() =>
+  import('./components/MiniWorldView').then((m) => ({ default: m.MiniWorldView })),
+);
+
 export default function App() {
   return (
     <PullToRefresh>
@@ -54,7 +58,7 @@ export default function App() {
 
 const VALID_TABS = new Set([
   'home', 'track', 'chat', 'call', 'memories', 'timeline', 'goals', 'capsules', 'insights',
-  'analyzer', 'fights', 'map', 'stats', 'split', 'logs', 'notifications', 'settings',
+  'analyzer', 'fights', 'map', 'stats', 'split', 'logs', 'notifications', 'settings', 'mini',
 ]);
 
 function tabFromHash(): string {
@@ -142,6 +146,12 @@ function AuthenticatedApp() {
         return <LogsView key="logs" />;
       case 'notifications':
         return <NotificationsView key="notifications" onNavigate={setActiveTab} />;
+      case 'mini':
+        return (
+          <Suspense key="mini" fallback={null}>
+            <MiniWorldView />
+          </Suspense>
+        );
       case 'settings':
         return <SettingsView key="settings" />;
       default:
