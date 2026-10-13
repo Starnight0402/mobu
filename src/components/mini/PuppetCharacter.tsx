@@ -106,7 +106,6 @@ export const PuppetCharacter: React.FC<Props> = ({ who, baseX, register, onTouch
   const get = useThree((s) => s.get);
   const root = useRef<THREE.Group>(null);
   const tilt = useRef<THREE.Group>(null);
-  const mat = useRef<THREE.ShaderMaterial>(null);
 
   const [textures, setTextures] = useState<Partial<Record<Expr, THREE.Texture>> | null>(null);
   const [prop, setProp] = useState<GiftId | null>(null);
@@ -186,21 +185,32 @@ export const PuppetCharacter: React.FC<Props> = ({ who, baseX, register, onTouch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [who]);
 
-  const uniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uHeight: { value: PUPPET_HEIGHT },
-      uSquashY: { value: 1 },
-      uSquashX: { value: 1 },
-      uBend: { value: 0 },
-      uWobble: { value: 0 },
-      uWobbleSpeed: { value: 14 },
-      uTexA: { value: null as THREE.Texture | null },
-      uTexB: { value: null as THREE.Texture | null },
-      uMix: { value: 1 },
-    }),
+  // Built imperatively: handing a uniforms object to <shaderMaterial> makes R3F
+  // copy it, so per-frame writes to our object would never reach the shader.
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+        uTime: { value: 0 },
+        uHeight: { value: PUPPET_HEIGHT },
+        uSquashY: { value: 1 },
+        uSquashX: { value: 1 },
+        uBend: { value: 0 },
+        uWobble: { value: 0 },
+        uWobbleSpeed: { value: 14 },
+        uTexA: { value: null },
+        uTexB: { value: null },
+        uMix: { value: 1 },
+        },
+        vertexShader: VERTEX,
+        fragmentShader: FRAGMENT,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
     [],
   );
+  const uniforms = material.uniforms;
 
   const geometry = useMemo(() => {
     const g = new THREE.PlaneGeometry(WIDTH, PUPPET_HEIGHT, 10, 24);
@@ -333,8 +343,7 @@ export const PuppetCharacter: React.FC<Props> = ({ who, baseX, register, onTouch
     // Crossfade to the wanted picture.
     const target = resolve(want);
     if (target && shown.current !== want) {
-      const m = mat.current;
-      if (m) {
+      {
         const next = target;
         if (uniforms.uTexA.value === null) {
           uniforms.uTexA.value = next;
@@ -385,19 +394,11 @@ export const PuppetCharacter: React.FC<Props> = ({ who, baseX, register, onTouch
 
       <group ref={tilt}>
         <mesh geometry={geometry} renderOrder={2}>
-          <shaderMaterial
-            ref={mat}
-            uniforms={uniforms}
-            vertexShader={VERTEX}
-            fragmentShader={FRAGMENT}
-            transparent
-            depthWrite={false}
-            side={THREE.DoubleSide}
-          />
+          <primitive object={material} attach="material" />
         </mesh>
 
         {prop && prop !== 'bottle' && prop !== 'blanket' && (
-          <group position={[0, 0.78, 0.14]} scale={1.5}>
+          <group position={[0, 0.78, 0.14]} scale={1.25}>
             <GiftProp id={prop} />
           </group>
         )}
@@ -407,7 +408,7 @@ export const PuppetCharacter: React.FC<Props> = ({ who, baseX, register, onTouch
           </group>
         )}
         {prop === 'bottle' && (
-          <group position={[0.19, 1.1, 0.14]} rotation={[0, 0, 1.3]} scale={1.6}>
+          <group position={[0.19, 1.1, 0.14]} rotation={[0, 0, 1.3]} scale={1.35}>
             <GiftProp id="bottle" />
           </group>
         )}

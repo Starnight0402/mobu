@@ -14,7 +14,7 @@ const CENTER_Y = 0.93;
 
 const BASE_X: Record<Who, number> = { him: -0.5, her: 0.5 };
 // The procedural fallback is smaller than the PNG puppets; scale it to match.
-const FALLBACK_SCALE = 1.3;
+const FALLBACK_SCALE = 1.05;
 
 /** Pulls the camera back until the minis fit, whatever the canvas aspect. */
 const CameraFit: React.FC = () => {
