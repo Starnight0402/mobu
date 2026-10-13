@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mic, Volume2, VolumeX } from 'lucide-react';
 import { haptic } from '../../lib/haptics';
 import { Action, ActionKind, COUPLE_ACTIONS, GIFTS, Gift, LIKES, MiniApi, Who, Zone } from './catalog';
+import { giftUrl } from './giftArt';
 import { isMuted, setMuted, sfx, SfxName } from './sfx';
 import { VoiceRecorder, playSqueaky } from './voice';
 
@@ -13,6 +14,21 @@ const LOVE_KEY = 'mobu-mini-love';
 
 const TOUCH_ACTION: Record<Zone, ActionKind> = { head: 'pat', body: 'poke', feet: 'tickle' };
 const TOUCH_SOUND: Record<Zone, SfxName> = { head: 'aww', body: 'squeak', feet: 'giggle' };
+
+/** Gift art if it has been dropped into public/mini/gifts/, else the emoji. */
+const GiftIcon: React.FC<{ gift: Gift }> = ({ gift }) => {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <span className="text-2xl leading-none">{gift.emoji}</span>;
+  return (
+    <img
+      src={giftUrl(gift.id)}
+      alt=""
+      draggable={false}
+      onError={() => setFailed(true)}
+      className="h-9 w-9 object-contain pointer-events-none"
+    />
+  );
+};
 
 interface Particle {
   id: number;
@@ -43,6 +59,8 @@ export const MiniWorldView: React.FC = () => {
   const loveRef = useRef(love);
   const [recording, setRecording] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
 
   const register = useCallback((who: Who, api: MiniApi | null) => {
     minis.current[who] = api;
@@ -88,6 +106,16 @@ export const MiniWorldView: React.FC = () => {
     }
   };
 
+  // Anyone who was sad when you did something nice gets cheered up, with a bonus.
+  const cheered = () => {
+    sfx('yay');
+    haptic('success');
+    bumpLove(6);
+    setToast('Cheered up!  +6 💜');
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2000);
+  };
+
   const busyTogether = () =>
     (['him', 'her'] as Who[]).some((w) => {
       const k = minis.current[w]?.current();
@@ -103,15 +131,18 @@ export const MiniWorldView: React.FC = () => {
       sfx('boing');
       return;
     }
+    const wasSad = mini.sad();
     mini.play({ kind: TOUCH_ACTION[zone] });
     sfx(TOUCH_SOUND[zone]);
     bumpLove(2);
+    if (wasSad) cheered();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const giveGift = (gift: Gift) => {
     const mini = minis.current[target];
     if (!mini || busyTogether()) return;
+    const wasSad = mini.sad();
     const love = LIKES[target].includes(gift.id);
     const kind: ActionKind = gift.id === 'bottle' ? 'feed' : gift.id === 'blanket' ? 'sleep' : 'gift';
     mini.play({ kind, gift: gift.id, love });
@@ -120,14 +151,24 @@ export const MiniWorldView: React.FC = () => {
     if (kind === 'sleep') setTimeout(() => sfx('snore'), 900);
     haptic(love ? 'success' : 'tap');
     bumpLove(love ? 8 : 4);
+    if (wasSad) cheered();
   };
 
   const together = (kind: 'hug' | 'kiss' | 'dance') => {
     if (busyTogether()) return;
+    const wasSad = minis.current.him?.sad() || minis.current.her?.sad();
     playBoth({ kind });
     sfx(kind === 'hug' ? 'aww' : kind === 'kiss' ? 'kiss' : 'tune');
     haptic('success');
     bumpLove(10);
+    if (wasSad) cheered();
+  };
+
+  const sulk = () => {
+    if (busyTogether()) return;
+    minis.current[target]?.play({ kind: 'cry' });
+    sfx('sob');
+    haptic('warning');
   };
 
   const nap = () => {
@@ -243,6 +284,12 @@ export const MiniWorldView: React.FC = () => {
           ))}
         </AnimatePresence>
 
+        {toast && (
+          <div className="absolute top-3 inset-x-0 flex justify-center pointer-events-none">
+            <div className="px-3 py-1 rounded-full bg-white text-black text-xs font-medium">{toast}</div>
+          </div>
+        )}
+
         {recording && (
           <div className="absolute top-3 inset-x-0 flex justify-center pointer-events-none">
             <div className="px-3 py-1 rounded-full bg-red-500/80 text-xs font-medium animate-pulse">
@@ -286,7 +333,7 @@ export const MiniWorldView: React.FC = () => {
               onClick={() => giveGift(g)}
               className="relative shrink-0 w-[72px] py-2 rounded-2xl glass flex flex-col items-center gap-1"
             >
-              <span className="text-2xl leading-none">{g.emoji}</span>
+              <GiftIcon gift={g} />
               <span className="text-[10px] text-white/60 leading-tight">{g.label}</span>
               {liked && <span className="absolute -top-1 -right-1 text-xs">💖</span>}
             </motion.button>
@@ -295,12 +342,13 @@ export const MiniWorldView: React.FC = () => {
       </div>
 
       {/* together + talk */}
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-6 gap-2">
         {[
           { label: 'Hug', emoji: '🤗', run: () => together('hug') },
           { label: 'Kiss', emoji: '😘', run: () => together('kiss') },
           { label: 'Dance', emoji: '💃', run: () => together('dance') },
           { label: 'Nap', emoji: '😴', run: nap },
+          { label: 'Sad', emoji: '🥺', run: sulk },
         ].map((b) => (
           <motion.button
             key={b.label}

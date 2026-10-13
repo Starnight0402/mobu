@@ -58,7 +58,7 @@ function tone(
 
 const NOTE = (semitonesFromA4: number) => 440 * Math.pow(2, semitonesFromA4 / 12);
 
-export type SfxName = 'boing' | 'pop' | 'squeak' | 'giggle' | 'kiss' | 'sparkle' | 'aww' | 'snore' | 'tune' | 'yay';
+export type SfxName = 'boing' | 'pop' | 'squeak' | 'giggle' | 'kiss' | 'sparkle' | 'aww' | 'snore' | 'tune' | 'yay' | 'sob' | 'sigh';
 
 export function sfx(name: SfxName): void {
   if (muted) return;
@@ -88,6 +88,15 @@ export function sfx(name: SfxName): void {
       case 'aww':
         tone(640, 430, 0.45, { gain: 0.14 });
         tone(960, 640, 0.45, { gain: 0.05 });
+        break;
+      case 'sob':
+        for (let i = 0; i < 4; i++) {
+          tone(520 - i * 30, 360 - i * 30, 0.32, { type: 'triangle', gain: 0.1, delay: i * 0.55 });
+          tone(540 - i * 30, 380 - i * 30, 0.1, { type: 'triangle', gain: 0.05, delay: i * 0.55 + 0.34 });
+        }
+        break;
+      case 'sigh':
+        tone(420, 240, 0.7, { gain: 0.1 });
         break;
       case 'snore':
         tone(110, 70, 0.7, { type: 'sawtooth', gain: 0.03 });

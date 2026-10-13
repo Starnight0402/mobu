@@ -39,6 +39,8 @@ function exprFor(a: Action): Expr {
       return { eyes: 'happy', mouth: 'kiss', blush: 1 };
     case 'wave':
       return { eyes: 'open', mouth: 'grin', blush: 0.6 };
+    case 'cry':
+      return { eyes: 'sleepy', mouth: 'o', blush: 0.9 };
   }
 }
 
@@ -62,6 +64,8 @@ export function burstFor(a: Action): string[] {
       return ['💋', '💕'];
     case 'dance':
       return ['🎵'];
+    case 'cry':
+      return ['😢'];
     default:
       return [];
   }
@@ -71,6 +75,7 @@ export const PERIODIC: Partial<Record<Action['kind'], { every: number; emojis: s
   sleep: { every: 1.3, emojis: ['💤'] },
   dance: { every: 0.7, emojis: ['🎵', '🎶'] },
   feed: { every: 1.0, emojis: ['💕'] },
+  cry: { every: 1.1, emojis: ['💧'] },
 };
 
 // Head content is laid out relative to the neck pivot so tilts look natural.
@@ -138,6 +143,7 @@ export const MiniCharacter: React.FC<Props> = ({ who, look, baseX, register, onT
         talk.current = level;
       },
       current: () => action.current?.a.kind ?? null,
+      sad: () => action.current?.a.kind === 'cry',
     });
     return () => register(who, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -244,6 +250,13 @@ export const MiniCharacter: React.FC<Props> = ({ who, look, baseX, register, onT
           aRz = -(0.2 + env * (1.5 - beat * 0.9));
           break;
         }
+        case 'cry':
+          headX = 0.22 * env;
+          squash = 1 + Math.sin(s * 14) * 0.015 * env;
+          aLx = aRx = -1.6 * env;
+          aLz = 0.2 - 0.6 * env;
+          aRz = -aLz;
+          break;
         case 'wave':
           headZ = -0.1 * env * side;
           aRz = -0.2 - 2.3 * env + Math.sin(s * 14) * 0.3 * env;

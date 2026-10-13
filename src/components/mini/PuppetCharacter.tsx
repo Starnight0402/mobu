@@ -4,6 +4,7 @@ import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Action, DURATION, GiftId, MiniApi, Who, Zone } from './catalog';
 import { PERIODIC, burstFor } from './MiniCharacter';
+import { GiftTexture, PROP_HEIGHT, loadGiftTexture } from './giftArt';
 import { GiftProp } from './MiniProps';
 
 /**
@@ -51,6 +52,8 @@ function exprFor(a: Action): Expr {
       return 'kiss';
     case 'sleep':
       return 'sleep';
+    case 'cry':
+      return 'sad';
   }
 }
 
@@ -90,6 +93,52 @@ const FRAGMENT = /* glsl */ `
   }
 `;
 
+// Seconds of being ignored before they start to sulk.
+const SAD_AFTER = 55;
+
+// Where the eyes sit on the art, as a fraction of its height / width.
+const EYE_Y = PUPPET_HEIGHT * 0.793;
+const EYE_X = WIDTH * 0.12;
+
+const TEAR_MATERIAL = new THREE.MeshBasicMaterial({ color: '#8fd3ff', transparent: true, opacity: 0.85 });
+
+const HeldProp: React.FC<{ id: GiftId }> = ({ id }) => {
+  const [art, setArt] = useState<GiftTexture | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    setArt(undefined);
+    void loadGiftTexture(id).then((a) => {
+      if (!cancelled) setArt(a);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+  if (art === undefined) return null;
+
+  const position: [number, number, number] =
+    id === 'bottle' ? [0.2, 1.1, 0.14] : id === 'blanket' ? [0, 0.55, 0.14] : [0, 0.78, 0.14];
+  const rotation: [number, number, number] = id === 'bottle' ? [0, 0, 1.3] : [0, 0, 0];
+
+  if (art) {
+    const h = PROP_HEIGHT[id];
+    return (
+      <group position={position} rotation={rotation}>
+        <mesh renderOrder={3}>
+          <planeGeometry args={[h * art.aspect, h]} />
+          <meshBasicMaterial map={art.texture} transparent depthWrite={false} />
+        </mesh>
+      </group>
+    );
+  }
+  const scale = id === 'bottle' ? 1.35 : id === 'blanket' ? 1.3 : 1.25;
+  return (
+    <group position={position} rotation={rotation} scale={scale}>
+      <GiftProp id={id} />
+    </group>
+  );
+};
+
 const ZONE_MATERIAL = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
 
 interface Props {
@@ -116,6 +165,7 @@ export const PuppetCharacter: React.FC<Props> = ({ who, baseX, register, onTouch
   const blinkAt = useRef(2 + Math.random() * 3);
   const idleFor = useRef(0);
   const nextIdleWave = useRef(15 + Math.random() * 15);
+  const tears = useRef<THREE.Group>(null);
   const shown = useRef<Expr | null>(null);
   const fade = useRef(1);
 
@@ -180,6 +230,7 @@ export const PuppetCharacter: React.FC<Props> = ({ who, baseX, register, onTouch
         talk.current = level;
       },
       current: () => action.current?.a.kind ?? null,
+      sad: () => action.current?.a.kind === 'cry' || (!action.current && idleFor.current >= SAD_AFTER),
     });
     return () => register(who, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -304,6 +355,11 @@ export const PuppetCharacter: React.FC<Props> = ({ who, baseX, register, onTouch
           bend = Math.sin(s * Math.PI) * 0.06 * env;
           break;
         }
+        case 'cry':
+          squashY = 0.985 + Math.sin(s * 13) * 0.012 * env;
+          bend = -0.03 * env + Math.sin(s * 13) * 0.01 * env;
+          rollZ = Math.sin(s * 2) * 0.015;
+          break;
         case 'wave':
           bend = -0.04 * env * side;
           rollZ = Math.sin(s * 5) * 0.03 * env;
@@ -316,19 +372,35 @@ export const PuppetCharacter: React.FC<Props> = ({ who, baseX, register, onTouch
         emitAtHead([periodic.emojis[Math.floor(Math.random() * periodic.emojis.length)]]);
       }
       if (p >= 1) {
+        // After a good cry they stay glum until someone cheers them up.
+        if (cur.a.kind === 'cry') idleFor.current = SAD_AFTER;
         action.current = null;
         setProp(null);
       }
     } else {
       idleFor.current += d;
       // Left alone: first a wave for attention, then a sulk if still ignored.
-      if (idleFor.current > nextIdleWave.current && idleFor.current < 55) {
+      if (idleFor.current > nextIdleWave.current && idleFor.current < SAD_AFTER) {
         nextIdleWave.current = idleFor.current + 15 + Math.random() * 20;
         start({ kind: 'wave' });
-      } else if (idleFor.current >= 55) {
+      } else if (idleFor.current >= SAD_AFTER) {
         want = 'sad';
         squashY = 1 - 0.02;
         bend = -0.02;
+      }
+    }
+
+    // Tears run while sad: slow when merely glum, streaming when crying.
+    if (tears.current) {
+      tears.current.visible = want === 'sad';
+      if (tears.current.visible) {
+        const rate = cur?.a.kind === 'cry' ? 1.1 : 0.45;
+        tears.current.children.forEach((drop, i) => {
+          const phase = (t * rate + (i % 3) / 3 + (i < 3 ? 0 : 0.17)) % 1;
+          drop.position.y = -phase * 0.34;
+          drop.scale.setScalar(Math.sin(Math.PI * Math.min(1, phase * 1.15)) + 0.001);
+        });
+        tears.current.position.x = bend * 0.63 * PUPPET_HEIGHT;
       }
     }
 
@@ -397,21 +469,18 @@ export const PuppetCharacter: React.FC<Props> = ({ who, baseX, register, onTouch
           <primitive object={material} attach="material" />
         </mesh>
 
-        {prop && prop !== 'bottle' && prop !== 'blanket' && (
-          <group position={[0, 0.78, 0.14]} scale={1.25}>
-            <GiftProp id={prop} />
-          </group>
-        )}
-        {prop === 'blanket' && (
-          <group position={[0, 0.55, 0.14]} scale={1.3}>
-            <GiftProp id="blanket" />
-          </group>
-        )}
-        {prop === 'bottle' && (
-          <group position={[0.19, 1.1, 0.14]} rotation={[0, 0, 1.3]} scale={1.35}>
-            <GiftProp id="bottle" />
-          </group>
-        )}
+        {prop && <HeldProp id={prop} />}
+
+        {/* tears */}
+        <group ref={tears} position={[0, EYE_Y, 0.06]} visible={false}>
+          {[-EYE_X, EYE_X].flatMap((ex) =>
+            [0, 1, 2].map((k) => (
+              <mesh key={`${ex}${k}`} position={[ex * 0.98, 0, 0]} scale={[0.7, 1, 0.7]} material={TEAR_MATERIAL} renderOrder={4}>
+                <sphereGeometry args={[0.02, 10, 8]} />
+              </mesh>
+            )),
+          )}
+        </group>
 
         {/* touch zones */}
         <mesh position={[0, PUPPET_HEIGHT * 0.82, 0.02]} onPointerDown={touch('head')} material={ZONE_MATERIAL}>

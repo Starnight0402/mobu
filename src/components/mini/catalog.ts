@@ -51,7 +51,8 @@ export type ActionKind =
   | 'hug'
   | 'kiss'
   | 'dance'
-  | 'wave';
+  | 'wave'
+  | 'cry';
 
 export interface Action {
   kind: ActionKind;
@@ -71,6 +72,7 @@ export const DURATION: Record<ActionKind, number> = {
   kiss: 2.6,
   dance: 4.2,
   wave: 1.6,
+  cry: 9,
 };
 
 /** Actions both minis do together; solo touches are ignored while one runs. */
@@ -80,6 +82,8 @@ export interface MiniApi {
   play: (action: Action) => void;
   setTalk: (level: number) => void;
   current: () => ActionKind | null;
+  /** Crying, or sulking after being ignored. Touching them cheers them up. */
+  sad: () => boolean;
 }
 
 export interface Look {
