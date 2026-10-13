@@ -25,6 +25,9 @@ export default defineConfig(({mode}) => {
         filename: 'sw.ts',
         injectManifest: {
           globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+          // Character art is ~400 KB per expression; fetch it when the Mini
+          // screen opens rather than making every install download it.
+          globIgnores: ['mini/**'],
         },
         registerType: 'autoUpdate',
         includeAssets: ['icons/apple-touch-icon.png'],

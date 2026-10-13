@@ -42,7 +42,7 @@ function exprFor(a: Action): Expr {
   }
 }
 
-function burstFor(a: Action): string[] {
+export function burstFor(a: Action): string[] {
   switch (a.kind) {
     case 'pat':
       return ['💖', '✨'];
@@ -67,7 +67,7 @@ function burstFor(a: Action): string[] {
   }
 }
 
-const PERIODIC: Partial<Record<Action['kind'], { every: number; emojis: string[] }>> = {
+export const PERIODIC: Partial<Record<Action['kind'], { every: number; emojis: string[] }>> = {
   sleep: { every: 1.3, emojis: ['💤'] },
   dance: { every: 0.7, emojis: ['🎵', '🎶'] },
   feed: { every: 1.0, emojis: ['💕'] },
