@@ -31,6 +31,30 @@ function toDatetimeLocalValue(ms: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Uncontrolled on purpose: React never writes the value back into the DOM
+// while typing, so nothing can reset the caret to the start (which typed
+// "wow apple" as "elppa wow"). Callers remount it with a `key` when the form
+// opens for a different memory.
+const TextField: React.FC<{
+  value: string;
+  onValue: (v: string) => void;
+  multiline?: boolean;
+  className?: string;
+}> = ({ value, onValue, multiline, className }) => {
+  const common = {
+    defaultValue: value,
+    className,
+    autoComplete: 'off',
+    autoCorrect: 'off',
+    spellCheck: false,
+  } as const;
+  return multiline ? (
+    <textarea {...common} onChange={(e) => onValue(e.target.value)} />
+  ) : (
+    <input type="text" {...common} onChange={(e) => onValue(e.target.value)} />
+  );
+};
+
 export const MemoryBoard: React.FC = () => {
   const memories = useQuery(api.memories.list) ?? [];
   const createMemory = useMutation(api.memories.create);
@@ -242,18 +266,20 @@ export const MemoryBoard: React.FC = () => {
     <div data-no-auto-reload className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Title</label>
-        <input
-          type="text"
+        <TextField
+          key={`title-${formData._id ?? 'new'}-${isAdding}`}
           value={formData.title || ''}
-          onChange={e => patch({ title: e.target.value})}
+          onValue={v => patch({ title: v })}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30"
         />
       </div>
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Description</label>
-        <textarea
+        <TextField
+          key={`desc-${formData._id ?? 'new'}-${isAdding}`}
+          multiline
           value={formData.description || ''}
-          onChange={e => patch({ description: e.target.value})}
+          onValue={v => patch({ description: v })}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30 h-24 resize-none"
         />
       </div>
