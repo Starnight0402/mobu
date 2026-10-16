@@ -41,6 +41,28 @@ const TextField: React.FC<{
   multiline?: boolean;
   className?: string;
 }> = ({ value, onValue, multiline, className }) => {
+  // The Android WebView in the APK was throwing the caret back to position 0
+  // after every keystroke in this modal. Remember where typing left it and put
+  // it back if it jumps to the start right after an edit (a deliberate tap to
+  // the start would come later than the window below).
+  const typed = useRef({ pos: 0, at: 0 });
+  type El = HTMLInputElement | HTMLTextAreaElement;
+  const restore = (el: El) => {
+    const { pos, at } = typed.current;
+    if (pos > 0 && Date.now() - at < 700 && el.selectionStart === 0 && el.selectionEnd === 0) {
+      el.setSelectionRange(pos, pos);
+    }
+  };
+  const handlers = {
+    onChange: (e: React.ChangeEvent<El>) => {
+      const el = e.currentTarget;
+      typed.current = { pos: el.selectionStart ?? el.value.length, at: Date.now() };
+      onValue(el.value);
+      requestAnimationFrame(() => restore(el));
+      setTimeout(() => restore(el), 60);
+    },
+    onSelect: (e: React.SyntheticEvent<El>) => restore(e.currentTarget),
+  };
   const common = {
     defaultValue: value,
     className,
@@ -49,9 +71,9 @@ const TextField: React.FC<{
     spellCheck: false,
   } as const;
   return multiline ? (
-    <textarea {...common} onChange={(e) => onValue(e.target.value)} />
+    <textarea {...common} {...handlers} />
   ) : (
-    <input type="text" {...common} onChange={(e) => onValue(e.target.value)} />
+    <input type="text" {...common} {...handlers} />
   );
 };
 
