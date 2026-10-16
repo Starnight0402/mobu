@@ -14,7 +14,8 @@ import { GiftProp } from './MiniProps';
  */
 
 export const PUPPET_HEIGHT = 1.6;
-const ASPECT = 404 / 1023;
+// Character PNGs are normalised to a 400x1024 canvas, feet on the bottom edge.
+const ASPECT = 400 / 1024;
 const WIDTH = PUPPET_HEIGHT * ASPECT;
 
 type Expr = 'neutral' | 'happy' | 'laugh' | 'love' | 'kiss' | 'sleep' | 'sad' | 'speaking' | 'surprised';
@@ -97,8 +98,8 @@ const FRAGMENT = /* glsl */ `
 const SAD_AFTER = 55;
 
 // Where the eyes sit on the art, as a fraction of its height / width.
-const EYE_Y = PUPPET_HEIGHT * 0.793;
-const EYE_X = WIDTH * 0.12;
+const EYE_Y = PUPPET_HEIGHT * 0.78;
+const EYE_X = WIDTH * 0.115;
 
 const TEAR_MATERIAL = new THREE.MeshBasicMaterial({ color: '#8fd3ff', transparent: true, opacity: 0.85 });
 
