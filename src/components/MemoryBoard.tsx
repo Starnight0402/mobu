@@ -9,6 +9,7 @@ import { SHADOW_MAP } from '../lib/memoryCardStyle';
 import { useLightbox } from './Lightbox';
 import { useBackHandler } from '../lib/backButtonStack';
 import { LocationPickerModal } from './LocationPickerModal';
+import { MemoryComposer } from './MemoryComposer';
 import { MemorySphereView, MemorySphereHandle } from './MemorySphereView';
 import { Plus, Maximize2, X, Edit2, Trash2, Upload, Save, Waypoints, LayoutGrid, MapPin, MapPinned, Loader2 } from 'lucide-react';
 
@@ -79,13 +80,12 @@ const TextField: React.FC<{
 
 export const MemoryBoard: React.FC = () => {
   const memories = useQuery(api.memories.list) ?? [];
-  const createMemory = useMutation(api.memories.create);
   const updateMemory = useMutation(api.memories.update);
   const removeMemory = useMutation(api.memories.remove);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const { openImage } = useLightbox();
 
-  const [isAdding, setIsAdding] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
   // Held by id and resolved against the live query, so the detail view always
   // shows what's actually saved (a snapshot went stale after every edit and
   // lost its image URL).
@@ -113,11 +113,10 @@ export const MemoryBoard: React.FC = () => {
   // with a stale copy.
   const patch = (p: Partial<MemoryFormState>) => setFormData((prev) => ({ ...prev, ...p }));
 
-  const formOpen = isAdding || isEditing;
-  const modalOpen = formOpen || !!selectedMemory;
+  const formOpen = isEditing || composerOpen;
+  const modalOpen = isEditing || !!selectedMemory;
   const closeModal = () => {
     setSelectedId(null);
-    setIsAdding(false);
     setIsEditing(false);
     setFormError(null);
   };
@@ -175,7 +174,6 @@ export const MemoryBoard: React.FC = () => {
 
   const saveMemory = async () => {
     if (saving) return;
-    const isNew = !formData._id;
     if (!formData.title?.trim()) {
       setFormError('Give this memory a title.');
       return;
@@ -215,12 +213,7 @@ export const MemoryBoard: React.FC = () => {
     setSaving(true);
     setFormError(null);
     try {
-      if (isNew) {
-        await createMemory(payload);
-      } else {
-        await updateMemory({ id: formData._id as Id<'memories'>, ...payload });
-      }
-      setIsAdding(false);
+      await updateMemory({ id: formData._id as Id<'memories'>, ...payload });
       setIsEditing(false);
     } catch (err) {
       console.error('Saving memory failed', err);
@@ -243,35 +236,29 @@ export const MemoryBoard: React.FC = () => {
     }
   };
 
-  const openAddModal = () => {
-    setFormData({
-      title: '',
-      description: '',
-      imageUrl: '',
-      category: 'photo',
-      location: '',
-      memoryDate: Date.now(),
-      cardWidth: 220,
-      cardHeight: 280,
-      textSize: 14,
-      fontFamily: "'Caveat', cursive",
-      textColor: '#000000',
-      bgColor: '#f8f8f8',
-      borderStyle: 'none',
-      borderWidth: 0,
-      borderColor: '#000000',
-      shadowEffect: 'xl',
-      bgImageOverlay: '',
-    });
-    setFormError(null);
-    setIsAdding(true);
-  };
-
   const openEditMode = () => {
     setFormData(selectedMemory || {});
     setFormError(null);
     setIsEditing(true);
   };
+
+  // Albums first (newest trip on top), then everything that was added singly.
+  const galleryGroups = useMemo(() => {
+    const albums = new Map<string, Memory[]>();
+    const loose: Memory[] = [];
+    for (const m of memories) {
+      if (m.albumName) albums.set(m.albumName, [...(albums.get(m.albumName) ?? []), m]);
+      else loose.push(m);
+    }
+    const when = (m: Memory) => m.memoryDate ?? m._creationTime;
+    const groups = [...albums.entries()].map(([album, items]) => {
+      const sorted = [...items].sort((x, y) => when(x) - when(y));
+      return { key: 'album:' + album, album: album as string | null, items: sorted, when: when(sorted[0]) as number | null };
+    });
+    groups.sort((x, y) => (y.when ?? 0) - (x.when ?? 0));
+    if (loose.length) groups.push({ key: 'loose', album: albums.size ? 'Moments' : null, items: loose, when: null });
+    return groups;
+  }, [memories]);
 
   const reCenter = () => {
     sphereRef.current?.recenter();
@@ -289,7 +276,7 @@ export const MemoryBoard: React.FC = () => {
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Title</label>
         <TextField
-          key={`title-${formData._id ?? 'new'}-${isAdding}`}
+          key={`title-${formData._id}`}
           value={formData.title || ''}
           onValue={v => patch({ title: v })}
           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white/30"
@@ -298,7 +285,7 @@ export const MemoryBoard: React.FC = () => {
       <div>
         <label className="text-xs text-white/60 uppercase tracking-widest mb-1 block">Description</label>
         <TextField
-          key={`desc-${formData._id ?? 'new'}-${isAdding}`}
+          key={`desc-${formData._id}`}
           multiline
           value={formData.description || ''}
           onValue={v => patch({ description: v })}
@@ -565,7 +552,8 @@ export const MemoryBoard: React.FC = () => {
           </button>
         )}
         <button
-          onClick={openAddModal}
+          onClick={() => setComposerOpen(true)}
+          aria-label="Add memories"
           className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-all shadow-xl"
         >
           <Plus size={20} />
@@ -574,30 +562,47 @@ export const MemoryBoard: React.FC = () => {
 
       {viewMode === 'grid' && (
         <div className="absolute inset-0 pt-28 pb-8 px-8 overflow-y-auto">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {memories.map((memory) => (
-              <button
-                key={memory._id}
-                onClick={() => setSelectedMemory(memory)}
-                className="aspect-square rounded-2xl overflow-hidden glass border border-white/5 relative group text-left"
-              >
-                <img
-                  src={memory.imageUrl}
-                  alt={memory.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-3">
-                  <div>
-                    <p className="text-xs font-medium text-white truncate">{memory.title}</p>
-                    {memory.location && (
-                      <p className="text-[9px] text-white/60 flex items-center gap-1 mt-0.5">
-                        <MapPin size={9} /> {memory.location}
-                      </p>
-                    )}
+          <div className="space-y-8">
+            {galleryGroups.map((group) => (
+              <section key={group.key}>
+                {group.album && (
+                  <div className="flex items-baseline justify-between mb-3 px-1">
+                    <h2 className="text-lg font-serif text-white">{group.album}</h2>
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">
+                      {group.items.length} photos
+                      {group.when != null && ' · ' + new Date(group.when).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                    </p>
                   </div>
+                )}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {group.items.map((memory) => (
+                    <button
+                      key={memory._id}
+                      onClick={() => setSelectedMemory(memory)}
+                      className="aspect-square rounded-2xl overflow-hidden glass border border-white/5 relative group text-left"
+                    >
+                      <img
+                        src={memory.imageUrl}
+                        alt={memory.title}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-3">
+                        <div>
+                          <p className="text-xs font-medium text-white truncate">{memory.title}</p>
+                          {memory.location && (
+                            <p className="text-[9px] text-white/60 flex items-center gap-1 mt-0.5">
+                              <MapPin size={9} /> {memory.location}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              </button>
+              </section>
             ))}
           </div>
           {memories.length === 0 && (
@@ -620,7 +625,7 @@ export const MemoryBoard: React.FC = () => {
 
       {/* Detail / Edit Modal */}
       <AnimatePresence>
-        {(selectedMemory || isAdding) && (
+        {(selectedMemory || isEditing) && (
           <div className="fixed inset-0 z-[100] flex items-stretch md:items-center justify-center p-0 md:p-12">
             <motion.div
               initial={{ opacity: 0 }}
@@ -640,7 +645,7 @@ export const MemoryBoard: React.FC = () => {
             >
               {/* Left Side: Preview */}
               <div className="shrink-0 md:flex-1 h-[36dvh] md:h-auto overflow-hidden bg-black flex items-center justify-center p-4 md:p-8 relative">
-                {isEditing || isAdding ? (
+                {isEditing ? (
                   <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none">
                     {/* Live Preview of the card */}
                     <div
@@ -705,10 +710,10 @@ export const MemoryBoard: React.FC = () => {
               <div className="w-full md:w-[400px] flex-1 min-h-0 p-5 md:p-8 flex flex-col bg-[#111] overflow-hidden">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-2xl font-serif text-white">
-                    {isAdding ? 'Pin New Memory' : isEditing ? 'Edit Memory' : 'Memory Details'}
+                    {isEditing ? 'Edit Memory' : 'Memory Details'}
                   </h3>
                   <div className="flex items-center gap-2">
-                    {selectedMemory && !isEditing && !isAdding && (
+                    {selectedMemory && !isEditing && (
                       <>
                         <button onClick={openEditMode} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"><Edit2 size={14} /></button>
                         <button onClick={deleteMemory} className="w-8 h-8 flex items-center justify-center rounded-full bg-red-500/20 hover:bg-red-500/40 text-red-400 transition-colors"><Trash2 size={14} /></button>
@@ -719,7 +724,7 @@ export const MemoryBoard: React.FC = () => {
                 </div>
 
                 <div className="flex-1 overflow-hidden flex flex-col">
-                  {isEditing || isAdding ? (
+                  {isEditing ? (
                     <>
                       {renderForm()}
                       {formError && (
@@ -732,7 +737,7 @@ export const MemoryBoard: React.FC = () => {
                           className="w-full py-4 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {uploading || saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                          {uploading ? 'Uploading…' : saving ? 'Saving…' : isAdding ? 'Add to Web' : 'Save Changes'}
+                          {uploading ? 'Uploading…' : saving ? 'Saving…' : 'Save Changes'}
                         </button>
                       </div>
                     </>
@@ -756,6 +761,8 @@ export const MemoryBoard: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {composerOpen && <MemoryComposer onClose={() => setComposerOpen(false)} />}
 
       {showMapPicker && (
         <LocationPickerModal

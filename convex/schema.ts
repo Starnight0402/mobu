@@ -71,6 +71,9 @@ export default defineSchema({
     location: v.optional(v.string()),
     lat: v.optional(v.number()),
     lng: v.optional(v.number()),
+    // Photos added together ("Goa trip") share an album name; the gallery
+    // groups on it. No separate albums table — the name is the grouping key.
+    albumName: v.optional(v.string()),
     // When the memory actually happened, editable independently of
     // _creationTime (which is just when the row was inserted/uploaded).
     memoryDate: v.optional(v.number()),

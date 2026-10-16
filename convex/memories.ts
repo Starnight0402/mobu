@@ -21,6 +21,7 @@ const memoryFields = {
   location: v.optional(v.string()),
   lat: v.optional(v.number()),
   lng: v.optional(v.number()),
+  albumName: v.optional(v.string()),
   memoryDate: v.optional(v.number()),
   cardWidth: v.optional(v.number()),
   cardHeight: v.optional(v.number()),
@@ -44,6 +45,7 @@ interface MemoryInput {
   location?: string;
   lat?: number;
   lng?: number;
+  albumName?: string;
   memoryDate?: number;
   cardWidth?: number;
   cardHeight?: number;
@@ -135,6 +137,40 @@ export const create = mutation({
       });
     }
     return id;
+  },
+});
+
+// Bulk add: one album of photos in a single round trip, with one notification
+// for the partner instead of one per photo.
+export const createMany = mutation({
+  args: {
+    albumName: v.optional(v.string()),
+    items: v.array(v.object(memoryFields)),
+  },
+  handler: async (ctx, { albumName, items }) => {
+    const userId = await requireUserId(ctx);
+    if (items.length === 0) throw new Error("Add at least one photo");
+    if (items.length > 100) throw new Error("Add up to 100 photos at a time");
+    const album = albumName?.trim() || undefined;
+    const ids = [];
+    for (const item of items) {
+      if (!item.title.trim()) throw new Error("Title can't be empty");
+      ids.push(await ctx.db.insert("memories", withDefaults({ ...item, albumName: album })));
+    }
+
+    const partner = await partnerOf(ctx, userId);
+    if (partner) {
+      const author = await ctx.db.get(userId);
+      const what = items.length === 1 ? items[0].title.trim() : `${items.length} photos${album ? ` · ${album}` : ""}`;
+      await notifyUser(ctx, {
+        userId: partner._id,
+        kind: "memory",
+        title: `${displayNameOf(author)} pinned ${items.length === 1 ? "a memory" : "new memories"}`,
+        body: what,
+        tab: "memories",
+      });
+    }
+    return ids;
   },
 });
 
