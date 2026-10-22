@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Autocomplete, GoogleMap, MarkerF, useLoadScript } from '@react-google-maps/api';
 import { X, Check, LocateFixed, KeyRound, Loader2, Search, Layers } from 'lucide-react';
-import { DARK_MAP_STYLE, GOOGLE_MAPS_API_KEY, MAPS_LOAD_OPTIONS } from './MapView';
+import { DARK_MAP_STYLE, GOOGLE_MAPS_API_KEY, MAPS_LOAD_OPTIONS, MAPS_PROBLEM_HINT, useMapsAuthFailure } from './MapView';
 import { reverseGeocode } from '../lib/geocode';
 
 interface LocationPickerModalProps {
@@ -21,6 +21,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
   onClose,
 }) => {
   const { isLoaded, loadError } = useLoadScript(MAPS_LOAD_OPTIONS);
+  const authFailed = useMapsAuthFailure();
   const hasInitial = initialLat != null && initialLng != null;
   const [marker, setMarker] = useState<{ lat: number; lng: number } | null>(
     hasInitial ? { lat: initialLat as number, lng: initialLng as number } : null,
@@ -73,6 +74,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
         setLocating(false);
       },
       () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 15000 },
     );
   };
 
@@ -113,7 +115,11 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
               </div>
             ) : loadError ? (
               <div className="absolute inset-0 flex items-center justify-center">
-                <p className="text-xs text-red-400">Google Maps failed to load — check the API key.</p>
+                <div className="text-center px-8 space-y-2 max-w-sm">
+                  <p className="text-sm text-red-400">Google Maps couldn't load.</p>
+                  <p className="text-xs text-white/40 leading-relaxed">{MAPS_PROBLEM_HINT}</p>
+                  <p className="text-xs text-white/60">You can still use your current location (button, bottom right).</p>
+                </div>
               </div>
             ) : !isLoaded ? (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -159,6 +165,12 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
               </GoogleMap>
             )}
 
+            {authFailed && isLoaded && (
+              <div className="absolute inset-x-4 top-20 z-20 rounded-2xl bg-red-500/15 border border-red-500/30 p-3 text-xs text-red-200 leading-relaxed">
+                Google rejected the Maps key. {MAPS_PROBLEM_HINT} You can still use your current location.
+              </div>
+            )}
+
             {/* Floating top bar: search + close, Google Maps app style */}
             <div className="absolute top-0 inset-x-0 z-10 p-3 sm:p-4 flex items-center gap-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
               {GOOGLE_MAPS_API_KEY && isLoaded ? (
@@ -189,8 +201,8 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
               </button>
             </div>
 
-            {GOOGLE_MAPS_API_KEY && isLoaded && (
-              <div className="absolute right-3 sm:right-4 bottom-32 z-10 flex flex-col gap-2">
+            <div className="absolute right-3 sm:right-4 bottom-32 z-10 flex flex-col gap-2">
+              {GOOGLE_MAPS_API_KEY && isLoaded && (
                 <button
                   type="button"
                   onClick={() => setSatellite((s) => !s)}
@@ -201,6 +213,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
                 >
                   <Layers size={16} />
                 </button>
+              )}
                 <button
                   type="button"
                   onClick={useMyLocation}
@@ -210,8 +223,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
                 >
                   {locating ? <Loader2 size={16} className="animate-spin" /> : <LocateFixed size={16} />}
                 </button>
-              </div>
-            )}
+            </div>
           </div>
 
           {/* Floating bottom sheet: coordinates + confirm */}

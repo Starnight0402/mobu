@@ -25,6 +25,24 @@ export const DARK_MAP_STYLE = [
 
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
+/**
+ * Google calls window.gm_authFailure when the script loads but the key is
+ * rejected (referrer not allowed, API not enabled, billing off). The map then
+ * renders a grey "Oops" tile with no error on our side, so surface it.
+ */
+export function useMapsAuthFailure(): boolean {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    (window as unknown as { gm_authFailure?: () => void }).gm_authFailure = () => setFailed(true);
+    return () => {
+      delete (window as unknown as { gm_authFailure?: () => void }).gm_authFailure;
+    };
+  }, []);
+  return failed;
+}
+
+export const MAPS_PROBLEM_HINT = `Allow ${window.location.origin}/* for this key, and enable Maps JavaScript API, Places API and billing in Google Cloud.`;
+
 // The Maps script can only be loaded once per page, and the loader errors if a
 // second useLoadScript call passes different options. Every caller (this map
 // and the location picker's Places search) must share exactly this object,
@@ -210,16 +228,16 @@ const MissingKeyState: React.FC = () => (
 
 const LiveMap: React.FC<{ memories: Memory[] }> = ({ memories }) => {
   const { isLoaded, loadError } = useLoadScript(MAPS_LOAD_OPTIONS);
+  const authFailed = useMapsAuthFailure();
   const [selected, setSelected] = useState<Memory | null>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const both = useQuery(api.liveLocations.both);
 
-  if (loadError) {
+  if (loadError || authFailed) {
     return (
       <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
         <p className="text-xs text-red-400">
-          Google Maps couldn't load. Usually the API key's referrer restrictions don't include this domain yet —
-          check the Google Cloud Console.
+          Google Maps couldn't load. {MAPS_PROBLEM_HINT}
         </p>
       </div>
     );
