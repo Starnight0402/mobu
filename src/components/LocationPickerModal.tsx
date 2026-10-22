@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Autocomplete, GoogleMap, MarkerF, useLoadScript } from '@react-google-maps/api';
 import { X, Check, LocateFixed, KeyRound, Loader2, Search, Layers } from 'lucide-react';
-import { DARK_MAP_STYLE, GOOGLE_MAPS_API_KEY } from './MapView';
+import { DARK_MAP_STYLE, GOOGLE_MAPS_API_KEY, MAPS_LOAD_OPTIONS } from './MapView';
 import { reverseGeocode } from '../lib/geocode';
 
 interface LocationPickerModalProps {
@@ -14,20 +14,13 @@ interface LocationPickerModalProps {
 
 const DEFAULT_CENTER = { lat: 20, lng: 0 };
 
-// Stable reference required by @react-google-maps/api — a new array on every
-// render forces it to tear down and reload the Places library in a loop.
-const PLACES_LIBRARIES: 'places'[] = ['places'];
-
 export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
   initialLat,
   initialLng,
   onConfirm,
   onClose,
 }) => {
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY || '',
-    libraries: PLACES_LIBRARIES,
-  });
+  const { isLoaded, loadError } = useLoadScript(MAPS_LOAD_OPTIONS);
   const hasInitial = initialLat != null && initialLng != null;
   const [marker, setMarker] = useState<{ lat: number; lng: number } | null>(
     hasInitial ? { lat: initialLat as number, lng: initialLng as number } : null,

@@ -24,6 +24,15 @@ export const DARK_MAP_STYLE = [
 ];
 
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+
+// The Maps script can only be loaded once per page, and the loader errors if a
+// second useLoadScript call passes different options. Every caller (this map
+// and the location picker's Places search) must share exactly this object,
+// otherwise whichever screen is opened second shows "couldn't load".
+export const MAPS_LOAD_OPTIONS: { googleMapsApiKey: string; libraries: 'places'[] } = {
+  googleMapsApiKey: GOOGLE_MAPS_API_KEY || '',
+  libraries: ['places'],
+};
 const MIN_WRITE_INTERVAL_MS = 12_000;
 const SHARE_DURATIONS = [
   { label: '1 hour', hours: 1 },
@@ -200,7 +209,7 @@ const MissingKeyState: React.FC = () => (
 );
 
 const LiveMap: React.FC<{ memories: Memory[] }> = ({ memories }) => {
-  const { isLoaded, loadError } = useLoadScript({ googleMapsApiKey: GOOGLE_MAPS_API_KEY! });
+  const { isLoaded, loadError } = useLoadScript(MAPS_LOAD_OPTIONS);
   const [selected, setSelected] = useState<Memory | null>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const both = useQuery(api.liveLocations.both);
