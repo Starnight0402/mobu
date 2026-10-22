@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Autocomplete, GoogleMap, MarkerF, useLoadScript } from '@react-google-maps/api';
 import { X, Check, LocateFixed, KeyRound, Loader2, Search, Layers } from 'lucide-react';
-import { DARK_MAP_STYLE, GOOGLE_MAPS_API_KEY, MAPS_LOAD_OPTIONS, MAPS_PROBLEM_HINT, useMapsAuthFailure } from './MapView';
+import { DARK_MAP_STYLE, GOOGLE_MAPS_API_KEY, MAPS_LOAD_OPTIONS, MAPS_PROBLEM_HINT, MapsDiagnostics, useMapsAuthFailure } from './MapView';
 import { reverseGeocode } from '../lib/geocode';
 
 interface LocationPickerModalProps {
@@ -118,6 +118,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
                 <div className="text-center px-8 space-y-2 max-w-sm">
                   <p className="text-sm text-red-400">Google Maps couldn't load.</p>
                   <p className="text-xs text-white/40 leading-relaxed">{MAPS_PROBLEM_HINT}</p>
+                  <MapsDiagnostics rejected={authFailed} />
                   <p className="text-xs text-white/60">You can still use your current location (button, bottom right).</p>
                 </div>
               </div>
@@ -167,7 +168,10 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
 
             {authFailed && isLoaded && (
               <div className="absolute inset-x-4 top-20 z-20 rounded-2xl bg-red-500/15 border border-red-500/30 p-3 text-xs text-red-200 leading-relaxed">
-                Google rejected the Maps key. {MAPS_PROBLEM_HINT} You can still use your current location.
+                <p>Google rejected the Maps key. {MAPS_PROBLEM_HINT} You can still use your current location.</p>
+                <div className="mt-2">
+                  <MapsDiagnostics rejected />
+                </div>
               </div>
             )}
 

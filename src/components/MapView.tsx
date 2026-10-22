@@ -41,6 +41,46 @@ export function useMapsAuthFailure(): boolean {
   return failed;
 }
 
+/**
+ * Runs on the device when Maps fails, so the error says which link is broken:
+ * a malformed key baked into the build, no route to Google, or neither (which
+ * points at the key's restrictions / billing in Google Cloud).
+ */
+export const MapsDiagnostics: React.FC<{ rejected: boolean }> = ({ rejected }) => {
+  const [reachable, setReachable] = useState<'checking' | 'yes' | 'no'>('checking');
+  useEffect(() => {
+    let live = true;
+    fetch('https://maps.googleapis.com/maps/api/mapsjs/gen_204', { mode: 'no-cors', cache: 'no-store' })
+      .then(() => live && setReachable('yes'))
+      .catch(() => live && setReachable('no'));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const key = GOOGLE_MAPS_API_KEY ?? '';
+  const keyOk = /^AIza[0-9A-Za-z_-]{35}$/.test(key);
+  const lines = [
+    keyOk
+      ? 'Key in this build: looks valid'
+      : `Key in this build is malformed (${key.length} chars; expected 39 starting "AIza", no spaces or quotes). Fix the VITE_GOOGLE_MAPS_API_KEY secret in GitHub.`,
+    reachable === 'checking'
+      ? 'Reaching Google: checking…'
+      : reachable === 'yes'
+        ? 'Reaching Google: ok'
+        : 'Reaching Google: blocked (no internet, VPN, DNS or ad-blocker)',
+    rejected ? 'Google loaded the script but rejected the key.' : '',
+  ].filter(Boolean);
+
+  return (
+    <ul className="text-[11px] text-white/50 leading-relaxed text-left space-y-1 list-disc pl-4">
+      {lines.map((l) => (
+        <li key={l}>{l}</li>
+      ))}
+    </ul>
+  );
+};
+
 export const MAPS_PROBLEM_HINT = `Allow ${window.location.origin}/* for this key, and enable Maps JavaScript API, Places API and billing in Google Cloud.`;
 
 // The Maps script can only be loaded once per page, and the loader errors if a
@@ -236,9 +276,10 @@ const LiveMap: React.FC<{ memories: Memory[] }> = ({ memories }) => {
   if (loadError || authFailed) {
     return (
       <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
-        <p className="text-xs text-red-400">
-          Google Maps couldn't load. {MAPS_PROBLEM_HINT}
-        </p>
+        <div className="space-y-3 max-w-sm">
+          <p className="text-xs text-red-400">Google Maps couldn't load. {MAPS_PROBLEM_HINT}</p>
+          <MapsDiagnostics rejected={authFailed} />
+        </div>
       </div>
     );
   }
