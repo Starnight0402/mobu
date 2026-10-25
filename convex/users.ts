@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
 import { mutation, query, QueryCtx } from "./_generated/server";
-import { requireUserId } from "./authHelpers";
+import { partnerOf, requireUserId } from "./authHelpers";
 
 async function withAvatarUrl(ctx: QueryCtx, user: Doc<"users">) {
   const avatarUrl = user.avatarStorageId ? await ctx.storage.getUrl(user.avatarStorageId) : null;
@@ -58,8 +58,7 @@ export const partner = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    const all = await ctx.db.query("users").collect();
-    const other = all.find((u) => u._id !== userId);
+    const other = await partnerOf(ctx, userId);
     return other ? await withAvatarUrl(ctx, other) : null;
   },
 });

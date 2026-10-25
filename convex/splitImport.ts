@@ -1,12 +1,8 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, MutationCtx } from "./_generated/server";
-import { requireUserId } from "./authHelpers";
+import { partnerOf, requireUserId } from "./authHelpers";
 import { Id } from "./_generated/dataModel";
 
-async function partnerOf(ctx: MutationCtx, userId: Id<"users">) {
-  const all = await ctx.db.query("users").collect();
-  return all.find((u) => u._id !== userId) ?? null;
-}
 
 /**
  * Bulk-inserts a batch of Splitwise-derived rows. Parsing and the "who is

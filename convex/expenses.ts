@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, QueryCtx } from "./_generated/server";
-import { requireUserId } from "./authHelpers";
+import { partnerOf, requireUserId } from "./authHelpers";
 import { notifyUser } from "./notify";
 
 function personName(user: Doc<"users"> | null) {
@@ -14,10 +14,6 @@ function lentAmount(expense: Doc<"expenses">) {
   return Math.round((expense.amount - payerShare) * 100) / 100;
 }
 
-async function partnerOf(ctx: QueryCtx, userId: Id<"users">) {
-  const all = await ctx.db.query("users").collect();
-  return all.find((u) => u._id !== userId) ?? null;
-}
 
 export const list = query({
   args: {},

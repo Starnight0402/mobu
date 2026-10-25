@@ -58,7 +58,4 @@ export async function notifyUser(ctx: MutationCtx, args: NotifyArgs) {
 }
 
 /** The other half of the couple — everything here notifies exactly one person. */
-export async function partnerOf(ctx: MutationCtx, userId: Id<"users">) {
-  const all = await ctx.db.query("users").collect();
-  return all.find((u) => u._id !== userId) ?? null;
-}
+export { partnerOf } from "./authHelpers";
