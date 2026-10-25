@@ -3,7 +3,7 @@ import { useQuery, useMutation } from 'convex/react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Memory, Id } from '../types';
-import { compressImage } from '../lib/image';
+import { compressImage, UnreadableImageError } from '../lib/image';
 import { reverseGeocode } from '../lib/geocode';
 import { SHADOW_MAP } from '../lib/memoryCardStyle';
 import { useLightbox } from './Lightbox';
@@ -146,7 +146,9 @@ export const MemoryBoard: React.FC = () => {
     } catch (err) {
       console.error('Image upload failed', err);
       setFormData((prev) => ({ ...prev, imageUrl: '' }));
-      setFormError("Couldn't upload that photo — check your connection and try again.");
+      setFormError(
+        err instanceof UnreadableImageError ? err.message : "Couldn't upload that photo — check your connection and try again.",
+      );
     } finally {
       setUploading(false);
     }

@@ -11,21 +11,62 @@ function supportsWebP(): boolean {
   return webpSupported;
 }
 
-function loadImage(file: File): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = reader.result as string;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+type Decoded = HTMLImageElement | ImageBitmap;
+
+/** Thrown when a photo can't be read at all, with a message fit to show the user. */
+export class UnreadableImageError extends Error {}
+
+const isHeic = (file: Blob & { name?: string }) =>
+  /image\/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name ?? '');
+
+function loadViaImg(blob: Blob): Promise<HTMLImageElement> {
+  // An object URL, not a data URL: base64-inflating a 12 MP photo into a JS
+  // string can exhaust memory on lower-end phones.
+  const url = URL.createObjectURL(blob);
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Image decode failed'));
+    img.src = url;
+  }).finally(() => URL.revokeObjectURL(url));
 }
 
-function encode(img: HTMLImageElement, maxDim: number, quality: number, mimeType: string): Promise<Blob> {
+async function decode(blob: Blob): Promise<Decoded> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await createImageBitmap(blob, { imageOrientation: 'from-image' });
+    } catch {
+      // Some WebViews reject the options bag or the format; try <img> instead.
+    }
+  }
+  return loadViaImg(blob);
+}
+
+async function loadImage(file: File): Promise<Decoded> {
+  try {
+    return await decode(file);
+  } catch {
+    // Most phones' "high efficiency" camera mode saves HEIC, which Chrome and
+    // Android WebViews can't decode. Convert it in JS (lazy-loaded, ~1 MB,
+    // only fetched when such a photo actually shows up).
+    if (isHeic(file) || file.type === '') {
+      try {
+        const { default: heic2any } = await import('heic2any');
+        const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+        return await decode(Array.isArray(converted) ? converted[0] : converted);
+      } catch {
+        // fall through to the friendly error
+      }
+    }
+    throw new UnreadableImageError(
+      isHeic(file)
+        ? "This HEIC photo couldn't be converted. Set the camera to save JPEG, or share it as JPEG."
+        : "This photo's format couldn't be read on this phone.",
+    );
+  }
+}
+
+function encode(img: Decoded, maxDim: number, quality: number, mimeType: string): Promise<Blob> {
   let { width, height } = img;
   if (width > maxDim || height > maxDim) {
     if (width > height) {
@@ -85,5 +126,6 @@ export async function compressImage(
     attempts++;
   }
 
+  if ('close' in img) img.close();
   return blob;
 }

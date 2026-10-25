@@ -5,7 +5,7 @@ import { parse as readExif, gps as readGps } from 'exifr';
 import { ImagePlus, X, MapPin, MapPinned, Loader2, Check, AlertTriangle, Crosshair } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { Id, Memory } from '../types';
-import { compressImage } from '../lib/image';
+import { compressImage, UnreadableImageError } from '../lib/image';
 import { reverseGeocode } from '../lib/geocode';
 import { useBackHandler } from '../lib/backButtonStack';
 import { LocationPickerModal } from './LocationPickerModal';
@@ -31,6 +31,8 @@ interface Photo {
   lng?: number;
   status: Status;
   storageId?: Id<'_storage'>;
+  /** Why it failed, when it's something retrying won't fix. */
+  reason?: string;
 }
 
 const toDateInput = (ms: number) => {
@@ -123,7 +125,16 @@ export const MemoryComposer: React.FC<{ onClose: () => void }> = ({ onClose }) =
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
-    accept: { 'image/*': [] },
+    // Photos picked from cloud-backed galleries (Google Photos, Samsung) often
+    // arrive with an empty MIME type; with a mime-only filter react-dropzone
+    // silently discarded them, so picking photos appeared to do nothing.
+    accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif'] },
+    onDropRejected: (rejections) => {
+      const untyped = rejections.map((r) => r.file).filter((f) => f.type === '');
+      if (untyped.length) onDrop(untyped);
+      const skipped = rejections.length - untyped.length;
+      if (skipped) setError(`${skipped} file${skipped === 1 ? " isn't a photo" : "s aren't photos"} and were skipped.`);
+    },
     noClick: photos.length > 0,
     noKeyboard: true,
   });
@@ -185,6 +196,10 @@ export const MemoryComposer: React.FC<{ onClose: () => void }> = ({ onClose }) =
         return;
       } catch (err) {
         console.error('Photo upload failed', err);
+        if (err instanceof UnreadableImageError) {
+          patchPhoto(p.id, { status: 'error', reason: err.message });
+          return;
+        }
       }
     }
     patchPhoto(p.id, { status: 'error' });
@@ -208,9 +223,15 @@ export const MemoryComposer: React.FC<{ onClose: () => void }> = ({ onClose }) =
       );
 
       const current = photosRef.current;
-      const failed = current.filter((p) => p.status !== 'done').length;
+      const failedPhotos = current.filter((p) => p.status !== 'done');
+      const failed = failedPhotos.length;
       if (failed) {
-        setError(`${failed} photo${failed === 1 ? '' : 's'} didn't upload. Check your connection and tap Save again to retry.`);
+        const reason = failedPhotos.find((p) => p.reason)?.reason;
+        setError(
+          reason
+            ? `${failed} photo${failed === 1 ? '' : 's'} couldn't be read. ${reason} Remove ${failed === 1 ? 'it' : 'them'} (red marker) to save the rest.`
+            : `${failed} photo${failed === 1 ? '' : 's'} didn't upload. Check your connection and tap Save again to retry.`,
+        );
         return;
       }
 

@@ -3,7 +3,7 @@ import { useMutation, useQuery } from 'convex/react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
-import { compressImage } from '../lib/image';
+import { compressImage, UnreadableImageError } from '../lib/image';
 import { useLightbox } from './Lightbox';
 import { haptic } from '../lib/haptics';
 import { Avatar, CoupleAvatars } from './Avatar';
@@ -82,7 +82,7 @@ export const ChatView: React.FC = () => {
       await sendMessage({ imageStorageId: storageId });
     } catch (err) {
       console.error('Photo send failed', err);
-      setError("Couldn't send that photo — try again.");
+      setError(err instanceof UnreadableImageError ? err.message : "Couldn't send that photo — try again.");
     } finally {
       setSending(false);
     }

@@ -27,7 +27,7 @@ export default defineConfig(({mode}) => {
           globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
           // Character art is ~400 KB per expression; fetch it when the Mini
           // screen opens rather than making every install download it.
-          globIgnores: ['mini/**'],
+          globIgnores: ['mini/**', '**/heic2any-*.js'],
         },
         registerType: 'autoUpdate',
         includeAssets: ['icons/apple-touch-icon.png'],

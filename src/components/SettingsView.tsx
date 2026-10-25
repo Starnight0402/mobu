@@ -8,7 +8,7 @@ import { AppSettings } from '../types';
 import { useTheme } from '../hooks/useTheme';
 import { useNotifications } from './NotificationProvider';
 import { haptic, hapticsEnabled, hapticsSupported, setHapticsEnabled } from '../lib/haptics';
-import { compressImage } from '../lib/image';
+import { compressImage, UnreadableImageError } from '../lib/image';
 import { saveTextFile } from '../lib/saveFile';
 
 export const SettingsView: React.FC = () => {
@@ -54,7 +54,10 @@ export const SettingsView: React.FC = () => {
       haptic('success');
     } catch (err) {
       console.error('Avatar upload failed', err);
-      setStatus({ kind: 'error', text: "Couldn't update your profile picture — try again." });
+      setStatus({
+        kind: 'error',
+        text: err instanceof UnreadableImageError ? err.message : "Couldn't update your profile picture — try again.",
+      });
     } finally {
       setAvatarUploading(false);
     }
