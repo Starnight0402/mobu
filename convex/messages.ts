@@ -54,6 +54,32 @@ export const send = mutation({
   },
 });
 
+// Cheap enough to keep subscribed app-wide: true while the partner has sent
+// something this device hasn't acknowledged yet.
+export const hasUndelivered = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const recent = await ctx.db.query("messages").order("desc").take(50);
+    return recent.some((m) => m.senderId !== userId && m.deliveredAt === undefined);
+  },
+});
+
+/** The recipient's app has received the messages (not necessarily opened chat). */
+export const markDelivered = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const recent = await ctx.db.query("messages").order("desc").take(50);
+    const now = Date.now();
+    for (const m of recent) {
+      if (m.senderId !== userId && m.deliveredAt === undefined) {
+        await ctx.db.patch(m._id, { deliveredAt: now });
+      }
+    }
+  },
+});
+
 export const markRead = mutation({
   args: {},
   handler: async (ctx) => {
@@ -62,8 +88,9 @@ export const markRead = mutation({
       .query("messages")
       .filter((q) => q.and(q.neq(q.field("senderId"), userId), q.eq(q.field("readAt"), undefined)))
       .collect();
+    const now = Date.now();
     for (const m of unread) {
-      await ctx.db.patch(m._id, { readAt: Date.now() });
+      await ctx.db.patch(m._id, { readAt: now, deliveredAt: m.deliveredAt ?? now });
     }
   },
 });

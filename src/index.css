@@ -1,14 +1,40 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Caveat:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Platypi:ital,wght@0,300..800;1,300..800&family=Space+Mono:wght@400;700&family=Caveat:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Space Grotesk", sans-serif;
+  /* Afterglow. Platypi is the one typeface; mono stays for the few tabular bits. */
+  --font-sans: "Platypi", Georgia, ui-serif, serif;
+  --font-display: "Platypi", Georgia, ui-serif, serif;
+  --font-serif: "Platypi", Georgia, ui-serif, serif;
   --font-mono: "Space Mono", ui-monospace, SFMono-Regular, monospace;
-  --color-nothing-purple: #a855f7;
-  --color-nothing-black: #000000;
-  --color-nothing-white: #ffffff;
-  --color-nothing-gray: #1a1a1a;
+
+  /* The whole app is written with black/white utilities (bg-black, text-white,
+     border-white/10…), so retheming these two variables retints everything.
+     Light mode swaps them below — a true theme, not a colour-invert filter. */
+  --color-black: #110d13;
+  --color-white: #f6efe9;
+  --color-surface: #1b161e;
+  --color-raised: #251f29;
+
+  --color-nothing-purple: #c3a6ff;
+  --color-nothing-black: #110d13;
+  --color-nothing-white: #f6efe9;
+  --color-nothing-gray: #1b161e;
+
+  --color-coral: #ff8f7e;
+  --color-sage: #9ed9b6;
+  --color-gold: #f2c879;
+}
+
+/* Plain custom properties, not @theme: Tailwind only emits @theme variables it
+   sees used in a class name, and these are read from JS style props. */
+:root {
+  --bubble-sent: #6f5f8f;
+  --bubble-sent-fg: #ffffff;
+  --bubble-delivered: #c3a6ff;
+  --bubble-delivered-fg: #1a1220;
+  --bubble-seen: #ff8f7e;
+  --bubble-seen-fg: #1a1220;
 }
 
 @layer base {
@@ -19,6 +45,10 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+  }
+
+  html {
+    background: var(--color-black);
   }
 
   body {
@@ -45,50 +75,25 @@
     --select-option-fg: #0a0a0a;
   }
 
-  /*
-   * Light mode: the entire app is built with hardcoded dark-theme utilities
-   * (bg-black, text-white/40, etc.) rather than semantic tokens, so a 1:1
-   * palette rewrite would touch hundreds of call sites across every
-   * component. Instead we flip the whole rendered app with a CSS filter —
-   * the same technique tools like Dark Reader use to retheme arbitrary
-   * pages. Colors are approximated by the invert+hue-rotate math rather
-   * than hand-tuned, but it's a real, fully functional light theme.
-   * Photos/videos are counter-inverted so they don't render as negatives.
-   *
-   * The filter lives on <html>, NOT on #root: a filtered element becomes the
-   * containing block for its position:fixed descendants, so filtering #root
-   * made the bottom nav scroll away with the page and pinned full-screen
-   * modals to the top of the document instead of the viewport. The root
-   * element is already the initial containing block, so fixed positioning
-   * keeps working there.
-   */
+  /* Light mode: the same variables, flipped. Photos and video are untouched. */
   html[data-theme='light'] {
-    filter: invert(1) hue-rotate(180deg);
-    /* Counter-intuitive but correct: a filter re-renders the element's own
-       background too, so the page must be painted BLACK for the inversion to
-       land on white. Filtering #root instead left <body>'s bg-black outside
-       the inversion, so the page stayed black under black-inverted text. */
-    background: #000;
-  }
-  html[data-theme='light'] img,
-  html[data-theme='light'] video {
-    filter: invert(1) hue-rotate(180deg);
-  }
-
-  /* backdrop-filter renders solid black under a filtered ancestor in
-     Chromium/WebKit — drop the blur in light mode and fall back to a
-     plain translucent background instead. */
-  html[data-theme='light'] .glass,
-  html[data-theme='light'] .glass-dark {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  /* .glass keeps its bg-white/5, which composites to near-black over the page
-     and inverts to a light card. .glass-dark is bg-black/40 — pure black over
-     a black page — so it would invert to pure white and vanish. */
-  html[data-theme='light'] .glass-dark {
-    background-color: rgba(255, 255, 255, 0.04);
+    --color-black: #fbf6f1;
+    --color-white: #1e1620;
+    --color-surface: #ffffff;
+    --color-raised: #f3ece6;
+    --color-nothing-purple: #6a45c9;
+    --color-nothing-black: #fbf6f1;
+    --color-nothing-white: #1e1620;
+    --color-nothing-gray: #ffffff;
+    --color-coral: #e2604e;
+    --color-sage: #3fa86b;
+    --color-gold: #b9852a;
+    --bubble-sent: #8d7bb5;
+    --bubble-sent-fg: #ffffff;
+    --bubble-delivered: #6a45c9;
+    --bubble-delivered-fg: #ffffff;
+    --bubble-seen: #e2604e;
+    --bubble-seen-fg: #ffffff;
   }
 
   /* Comfortable hit targets on touch devices — several icon buttons were
@@ -138,12 +143,13 @@
 }
 
 @layer components {
+  /* One card style: a solid warm surface and a hairline. No blur, no glow. */
   .glass {
-    @apply bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl;
+    @apply bg-surface border border-white/10 rounded-3xl;
   }
-  
+
   .glass-dark {
-    @apply bg-black/40 backdrop-blur-2xl border border-white/5 rounded-3xl;
+    @apply bg-surface/90 border border-white/8 rounded-3xl;
   }
 
   .nothing-button {
@@ -154,10 +160,12 @@
     @apply bg-white/5 border border-white/10 rounded-2xl px-4 py-3 focus:outline-none focus:border-nothing-purple/50 transition-all;
   }
 
+  /* Was a mono, uppercase "terminal" heading. Headings are now Platypi in
+     normal case; the class name stays so the ~30 call sites don't change. */
   .dot-matrix {
-    font-family: var(--font-mono);
-    letter-spacing: -0.05em;
-    text-transform: uppercase;
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    text-transform: none;
   }
 
   .no-scrollbar::-webkit-scrollbar {

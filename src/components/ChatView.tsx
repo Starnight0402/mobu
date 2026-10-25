@@ -7,7 +7,7 @@ import { compressImage, UnreadableImageError } from '../lib/image';
 import { useLightbox } from './Lightbox';
 import { haptic } from '../lib/haptics';
 import { Avatar, CoupleAvatars } from './Avatar';
-import { Send, Image as ImageIcon, Mic, Square, Loader2, Play, Pause } from 'lucide-react';
+import { Send, Image as ImageIcon, Mic, Square, Loader2, Play, Pause, Check, CheckCheck } from 'lucide-react';
 
 export const ChatView: React.FC = () => {
   const messages = useQuery(api.messages.list) ?? [];
@@ -39,8 +39,15 @@ export const ChatView: React.FC = () => {
     hasSnappedRef.current = true;
   }, [messages.length]);
 
+  // "Seen" must mean on screen: don't mark read while the app is in the
+  // background, and catch up the moment it comes back.
   useEffect(() => {
-    markRead();
+    const markIfVisible = () => {
+      if (document.visibilityState === 'visible') void markRead();
+    };
+    markIfVisible();
+    document.addEventListener('visibilitychange', markIfVisible);
+    return () => document.removeEventListener('visibilitychange', markIfVisible);
   }, [messages.length, markRead]);
 
   const uploadBlob = async (blob: Blob): Promise<Id<'_storage'>> => {
@@ -171,9 +178,10 @@ export const ChatView: React.FC = () => {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 onDoubleClick={() => toggleHeart(m._id, m.reaction)}
-                className={`relative max-w-[75%] rounded-2xl px-4 py-2.5 cursor-pointer ${
-                  isMe ? 'bg-nothing-purple text-white' : 'glass'
+                className={`relative max-w-[75%] rounded-2xl px-4 py-2.5 cursor-pointer transition-colors duration-500 ${
+                  isMe ? '' : 'glass'
                 }`}
+                style={isMe ? { backgroundColor: `var(--bubble-${status(m)})`, color: `var(--bubble-${status(m)}-fg)` } : undefined}
               >
                 {m.text && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{m.text}</p>}
                 {m.imageUrl && (
@@ -192,8 +200,14 @@ export const ChatView: React.FC = () => {
                   </button>
                 )}
                 {m.voiceUrl && <VoiceBubble url={m.voiceUrl} />}
-                <p className={`text-[8px] mt-1 ${isMe ? 'text-white/60' : 'text-white/30'}`}>
+                <p className={`text-[8px] mt-1 flex items-center gap-1 ${isMe ? 'opacity-75' : 'text-white/30'}`}>
                   {new Date(m._creationTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {isMe && (
+                    <span className="inline-flex items-center gap-0.5" aria-label={STATUS_LABEL[status(m)]}>
+                      {status(m) === 'sent' ? <Check size={11} /> : <CheckCheck size={11} />}
+                      {STATUS_LABEL[status(m)]}
+                    </span>
+                  )}
                 </p>
                 <AnimatePresence>
                   {m.reaction && (
@@ -279,6 +293,11 @@ export const ChatView: React.FC = () => {
     </div>
   );
 };
+
+type Status = 'sent' | 'delivered' | 'seen';
+const STATUS_LABEL: Record<Status, string> = { sent: 'Sent', delivered: 'Delivered', seen: 'Seen' };
+const status = (m: { readAt?: number; deliveredAt?: number }): Status =>
+  m.readAt ? 'seen' : m.deliveredAt ? 'delivered' : 'sent';
 
 const VoiceBubble: React.FC<{ url: string }> = ({ url }) => {
   const audioRef = useRef<HTMLAudioElement>(null);

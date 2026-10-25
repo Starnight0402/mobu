@@ -122,7 +122,7 @@ export const MapView: React.FC = () => {
     // screen like Google Maps" experience means edge-to-edge, with the
     // app's own chrome (title, stats, sharing) as floating overlays instead
     // of a boxed card the map sits inside.
-    <div className="fixed inset-0 z-10 bg-[#050505]" data-no-pull-refresh>
+    <div className="fixed inset-0 z-10 bg-black" data-no-pull-refresh>
       {GOOGLE_MAPS_API_KEY ? <LiveMap memories={pinned} /> : <MissingKeyState />}
 
       <div

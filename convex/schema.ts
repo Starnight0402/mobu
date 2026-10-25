@@ -169,6 +169,9 @@ export default defineSchema({
     imageStorageId: v.optional(v.id("_storage")),
     voiceStorageId: v.optional(v.id("_storage")),
     reaction: v.optional(v.string()),
+    // sent = no stamps; delivered = the recipient's app received it;
+    // seen = the recipient had the chat open (readAt).
+    deliveredAt: v.optional(v.number()),
     readAt: v.optional(v.number()),
   }),
 

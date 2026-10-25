@@ -271,7 +271,7 @@ export const NotificationProvider: React.FC<{
                   onNavigate(t.tab);
                   setToasts((prev) => prev.filter((x) => x.id !== t.id));
                 }}
-                className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl border border-white/10 bg-[#141414]/95 px-4 py-3 text-left shadow-2xl backdrop-blur-xl"
+                className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl border border-white/10 bg-surface/95 px-4 py-3 text-left shadow-2xl backdrop-blur-xl"
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-nothing-purple/15">
                   <Icon size={16} className="text-nothing-purple" />

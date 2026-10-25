@@ -101,7 +101,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
           exit={{ opacity: 0 }}
           className="relative w-full h-full flex flex-col"
         >
-          <div className="relative flex-1 bg-[#050505]">
+          <div className="relative flex-1 bg-black">
             {!GOOGLE_MAPS_API_KEY ? (
               <div className="absolute inset-0 flex items-center justify-center p-8">
                 <div className="text-center space-y-3 max-w-sm">
@@ -183,7 +183,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
                   onPlaceChanged={onPlaceChanged}
                   className="flex-1"
                 >
-                  <div className="flex items-center gap-2 bg-[#161616]/95 border border-white/10 rounded-full pl-4 pr-2 py-2.5 shadow-2xl backdrop-blur-md">
+                  <div className="flex items-center gap-2 bg-surface/95 border border-white/10 rounded-full pl-4 pr-2 py-2.5 shadow-2xl backdrop-blur-md">
                     <Search size={16} className="text-white/40 shrink-0" />
                     <input
                       type="text"
@@ -199,7 +199,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
               )}
               <button
                 onClick={onClose}
-                className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full bg-[#161616]/95 border border-white/10 hover:bg-[#222] text-white transition-colors shadow-2xl backdrop-blur-md"
+                className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full bg-surface/95 border border-white/10 hover:bg-raised text-white transition-colors shadow-2xl backdrop-blur-md"
               >
                 <X size={18} />
               </button>
@@ -212,7 +212,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
                   onClick={() => setSatellite((s) => !s)}
                   title="Toggle satellite / 3D imagery"
                   className={`w-11 h-11 flex items-center justify-center rounded-full border border-white/10 shadow-2xl backdrop-blur-md transition-colors ${
-                    satellite ? 'bg-white text-black' : 'bg-[#161616]/95 text-white hover:bg-[#222]'
+                    satellite ? 'bg-white text-black' : 'bg-surface/95 text-white hover:bg-raised'
                   }`}
                 >
                   <Layers size={16} />
@@ -223,7 +223,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
                   onClick={useMyLocation}
                   disabled={locating}
                   title="Use my location"
-                  className="w-11 h-11 flex items-center justify-center rounded-full bg-[#161616]/95 hover:bg-[#222] border border-white/10 text-white transition-colors disabled:opacity-50 shadow-2xl backdrop-blur-md"
+                  className="w-11 h-11 flex items-center justify-center rounded-full bg-surface/95 hover:bg-raised border border-white/10 text-white transition-colors disabled:opacity-50 shadow-2xl backdrop-blur-md"
                 >
                   {locating ? <Loader2 size={16} className="animate-spin" /> : <LocateFixed size={16} />}
                 </button>
@@ -232,7 +232,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
 
           {/* Floating bottom sheet: coordinates + confirm */}
           <div className="absolute bottom-0 inset-x-0 z-10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <div className="bg-[#111]/95 border border-white/10 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-2xl backdrop-blur-md">
+            <div className="bg-surface/95 border border-white/10 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-2xl backdrop-blur-md">
               <p className="text-[10px] font-mono text-white/40 truncate">
                 {marker ? `📍 ${marker.lat.toFixed(4)}, ${marker.lng.toFixed(4)}` : 'Tap the map or search to set a location'}
               </p>

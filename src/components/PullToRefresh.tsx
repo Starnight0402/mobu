@@ -95,7 +95,7 @@ export const PullToRefresh: React.FC<{ children: React.ReactNode }> = ({ childre
             style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}
           >
             <div
-              className="w-9 h-9 rounded-full bg-[#141414]/90 border border-white/10 flex items-center justify-center backdrop-blur-xl shadow-xl"
+              className="w-9 h-9 rounded-full bg-surface/90 border border-white/10 flex items-center justify-center backdrop-blur-xl shadow-xl"
               style={{ transform: `scale(${Math.min(0.6 + (pull / PULL_THRESHOLD) * 0.4, 1)})` }}
             >
               <RefreshCw

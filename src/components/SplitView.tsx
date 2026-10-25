@@ -460,7 +460,7 @@ const Sheet: React.FC<{ title: string; onClose: () => void; children: React.Reac
       animate={{ y: 0 }}
       exit={{ y: '100%' }}
       transition={{ type: 'spring', stiffness: 400, damping: 38 }}
-      className="fixed inset-x-0 bottom-0 z-[120] mx-auto max-h-[88dvh] w-full max-w-lg overflow-y-auto rounded-t-[2rem] border-t border-x border-white/10 bg-[#0b0b0b] px-5 pt-3"
+      className="fixed inset-x-0 bottom-0 z-[120] mx-auto max-h-[88dvh] w-full max-w-lg overflow-y-auto rounded-t-[2rem] border-t border-x border-white/10 bg-black px-5 pt-3"
       style={{ paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom) + 1.5rem))' }}
     >
       <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />

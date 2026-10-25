@@ -4,7 +4,7 @@ const config: CapacitorConfig = {
   appId: 'com.mobu.app',
   appName: 'Mobu',
   webDir: 'dist',
-  backgroundColor: '#000000',
+  backgroundColor: '#110D13',
   // OTA updates: the APK is a thin shell that always loads the live
   // GitHub Pages deployment instead of a bundled snapshot. Every push to
   // main (see .github/workflows/deploy.yml) updates the app on next

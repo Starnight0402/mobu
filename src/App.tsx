@@ -1,5 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
-import { Authenticated, Unauthenticated, AuthLoading, useQuery } from 'convex/react';
+import { Authenticated, Unauthenticated, AuthLoading, useMutation, useQuery } from 'convex/react';
 import { Navigation } from './components/Navigation';
 import { PullToRefresh } from './components/PullToRefresh';
 import { useAndroidBackButton } from './lib/useAndroidBackButton';
@@ -93,6 +93,20 @@ function useHashTab(): [string, (tab: string) => void] {
   return [activeTab, setActiveTab];
 }
 
+/**
+ * Delivery receipts. The sender's bubble turns "delivered" once this device,
+ * wherever you are in the app, has received the message; "seen" is set by the
+ * chat screen itself.
+ */
+function ChatReceipts() {
+  const pending = useQuery(api.messages.hasUndelivered);
+  const markDelivered = useMutation(api.messages.markDelivered);
+  useEffect(() => {
+    if (pending) void markDelivered();
+  }, [pending, markDelivered]);
+  return null;
+}
+
 function AuthenticatedApp() {
   const currentUser = useQuery(api.users.current);
   const [activeTab, setActiveTab] = useHashTab();
@@ -161,6 +175,7 @@ function AuthenticatedApp() {
 
   return (
     <NotificationProvider onNavigate={setActiveTab}>
+      <ChatReceipts />
       <AppShell activeTab={activeTab} setActiveTab={setActiveTab}>
         {renderContent()}
       </AppShell>

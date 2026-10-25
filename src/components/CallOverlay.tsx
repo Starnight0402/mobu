@@ -111,7 +111,7 @@ export const CallOverlay: React.FC = () => {
             onBlocked={reportAudioBlocked}
           />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-5 bg-[#0a0a0a]">
+          <div className="w-full h-full flex flex-col items-center justify-center gap-5 bg-black">
             <Avatar name={peerName} avatarUrl={peerAvatarUrl} />
             <div className="text-center space-y-1">
               <p className="text-xl font-medium">{peerName}</p>
@@ -157,7 +157,7 @@ export const CallOverlay: React.FC = () => {
             style={{ top: 'max(5.5rem, calc(env(safe-area-inset-top) + 5rem))' }}
           >
             {cameraOff ? (
-              <div className="flex h-full w-full items-center justify-center bg-[#141414]">
+              <div className="flex h-full w-full items-center justify-center bg-surface">
                 <CamOff size={18} className="text-white/40" />
               </div>
             ) : (

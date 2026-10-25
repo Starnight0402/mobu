@@ -85,7 +85,16 @@ export const MemoryBoard: React.FC = () => {
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const { openImage } = useLightbox();
 
-  const [composerOpen, setComposerOpen] = useState(false);
+  // The global + button asks for the composer by leaving a note here before navigating.
+  const [composerOpen, setComposerOpen] = useState(() => {
+    try {
+      const wanted = sessionStorage.getItem('mobu-open-composer') === '1';
+      if (wanted) sessionStorage.removeItem('mobu-open-composer');
+      return wanted;
+    } catch {
+      return false;
+    }
+  });
   // Held by id and resolved against the live query, so the detail view always
   // shows what's actually saved (a snapshot went stale after every edit and
   // lost its image URL).
@@ -516,7 +525,7 @@ export const MemoryBoard: React.FC = () => {
   );
 
   return (
-    <div className="relative h-[calc(100dvh-11rem)] w-full overflow-hidden rounded-[2rem] sm:rounded-[3rem] border border-white/5 bg-[#0a0a0a] backdrop-blur-sm">
+    <div className="relative h-[calc(100dvh-11rem)] w-full overflow-hidden rounded-[2rem] sm:rounded-[3rem] border border-white/5 bg-black backdrop-blur-sm">
       <div className="absolute inset-0 pointer-events-none opacity-20"
            style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
 
@@ -643,7 +652,7 @@ export const MemoryBoard: React.FC = () => {
               initial={{ scale: 0.98, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.98, opacity: 0, y: 20 }}
-              className="relative bg-[#111] border-0 md:border border-white/10 rounded-none md:rounded-2xl overflow-hidden w-full max-w-5xl flex flex-col md:flex-row h-full md:h-auto md:max-h-[90vh] shadow-2xl"
+              className="relative bg-surface border-0 md:border border-white/10 rounded-none md:rounded-2xl overflow-hidden w-full max-w-5xl flex flex-col md:flex-row h-full md:h-auto md:max-h-[90vh] shadow-2xl"
             >
               {/* Left Side: Preview */}
               <div className="shrink-0 md:flex-1 h-[36dvh] md:h-auto overflow-hidden bg-black flex items-center justify-center p-4 md:p-8 relative">
@@ -709,7 +718,7 @@ export const MemoryBoard: React.FC = () => {
               </div>
 
               {/* Right Side: Info or Form */}
-              <div className="w-full md:w-[400px] flex-1 min-h-0 p-5 md:p-8 flex flex-col bg-[#111] overflow-hidden">
+              <div className="w-full md:w-[400px] flex-1 min-h-0 p-5 md:p-8 flex flex-col bg-surface overflow-hidden">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-2xl font-serif text-white">
                     {isEditing ? 'Edit Memory' : 'Memory Details'}

@@ -264,7 +264,7 @@ export const MemoryComposer: React.FC<{ onClose: () => void }> = ({ onClose }) =
   const many = photos.length > 1;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[#0a0a0a] flex flex-col" data-no-auto-reload data-no-pull-refresh>
+    <div className="fixed inset-0 z-[100] bg-black flex flex-col" data-no-auto-reload data-no-pull-refresh>
       <header className="shrink-0 flex items-center justify-between px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/5">
         <div>
           <h2 className="text-xl font-serif text-white">New memory</h2>
@@ -472,7 +472,7 @@ export const MemoryComposer: React.FC<{ onClose: () => void }> = ({ onClose }) =
         </section>
       </div>
 
-      <footer className="shrink-0 px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-white/5 bg-[#0a0a0a] space-y-3">
+      <footer className="shrink-0 px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-white/5 bg-black space-y-3">
         {saving && photos.length > 0 && (
           <div>
             <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
