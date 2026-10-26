@@ -203,8 +203,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             aria-label={`View ${feature.title}`}
           >
             <img src={feature.imageUrl} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-            <span className="absolute inset-x-2 bottom-2 rounded-2xl border border-white/25 bg-black/25 p-3.5 shadow-lg backdrop-blur-xl backdrop-saturate-150">
-              <span className="block text-xs uppercase tracking-[0.08em] text-white/80">
+            <span className="absolute inset-x-2 bottom-2 rounded-2xl border border-white/25 bg-[rgb(20_14_28/0.34)] p-3.5 shadow-lg backdrop-blur-xl backdrop-saturate-150">
+              <span className="block text-xs uppercase tracking-[0.08em] text-[#ffffffcc]">
                 {featureIsOnThisDay
                   ? `${featureYears} year${featureYears === 1 ? '' : 's'} ago`
                   : new Date(feature.memoryDate ?? feature._creationTime).toLocaleDateString(undefined, {
@@ -213,7 +213,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                       year: 'numeric',
                     })}
               </span>
-              <span className="mt-0.5 block font-display text-lg text-white">{feature.title}</span>
+              <span className="mt-0.5 block font-display text-lg text-[#fff]">{feature.title}</span>
             </span>
           </button>
         </section>
@@ -237,7 +237,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 className="relative aspect-square overflow-hidden rounded-2xl border border-white/20 shadow-md"
               >
                 <img src={photo.src} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
-                <span className="absolute inset-x-1 bottom-1 truncate rounded-lg bg-black/30 px-2 py-1 text-[11px] text-white backdrop-blur-md">
+                <span className="absolute inset-x-1 bottom-1 truncate rounded-lg bg-[rgb(20_14_28/0.4)] px-2 py-1 text-[11px] text-[#fff] backdrop-blur-md">
                   {photo.alt}
                 </span>
               </button>
