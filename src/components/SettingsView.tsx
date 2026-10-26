@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useConvex } from 'convex/react';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { motion } from 'motion/react';
-import { Globe, DollarSign, Save, LogOut, User, Moon, Sun, Download, Smartphone, Bell, Vibrate, Camera, X, Loader2 } from 'lucide-react';
+import { Heart, Globe, DollarSign, Save, LogOut, User, Moon, Sun, Download, Smartphone, Bell, Vibrate, Camera, X, Loader2 } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { AppSettings } from '../types';
 import { useTheme } from '../hooks/useTheme';
@@ -25,6 +25,7 @@ export const SettingsView: React.FC = () => {
     currency: 'USD',
     timezone: 'UTC',
     partnerPhone: '',
+    startDate: '',
   });
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -79,6 +80,7 @@ export const SettingsView: React.FC = () => {
         currency: remoteSettings.currency,
         timezone: remoteSettings.timezone,
         partnerPhone: remoteSettings.partnerPhone ?? '',
+        startDate: remoteSettings.startDate ?? '',
       });
     }
   }, [remoteSettings]);
@@ -257,6 +259,21 @@ export const SettingsView: React.FC = () => {
         </div>
 
         <div className="space-y-6">
+          <div className="space-y-2">
+            <label htmlFor="start-date" className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/40 ml-2">
+              <Heart size={12} /> Our day one
+            </label>
+            <input
+              id="start-date"
+              type="date"
+              value={settings.startDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setSettings({ ...settings, startDate: e.target.value })}
+              className="nothing-input w-full"
+            />
+            <p className="ml-2 text-xs text-white/40">Shown on Home as "Day N of us".</p>
+          </div>
+
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/20 ml-2">
               <DollarSign size={12} /> Currency

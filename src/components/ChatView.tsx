@@ -7,7 +7,7 @@ import { compressImage, UnreadableImageError } from '../lib/image';
 import { useLightbox } from './Lightbox';
 import { haptic } from '../lib/haptics';
 import { Avatar, CoupleAvatars } from './Avatar';
-import { Send, Image as ImageIcon, Mic, Square, Loader2, Play, Pause, Check, CheckCheck } from 'lucide-react';
+import { Send, Image as ImageIcon, Mic, Square, Loader2, Play, Pause, Check, CheckCheck, Phone } from 'lucide-react';
 
 export const ChatView: React.FC = () => {
   const messages = useQuery(api.messages.list) ?? [];
@@ -158,9 +158,18 @@ export const ChatView: React.FC = () => {
       <header className="flex items-end justify-between mb-4">
         <div className="space-y-1">
           <h1 className="text-4xl font-medium tracking-tight dot-matrix">Chat</h1>
-          <p className="text-white/40 text-[10px] uppercase tracking-widest">Just the two of you</p>
+          <p className="text-white/50 text-xs">Just the two of you</p>
         </div>
-        <CoupleAvatars size={30} />
+        <div className="flex items-center gap-2">
+          <a
+            href="#/call"
+            aria-label="Call"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-surface text-white"
+          >
+            <Phone size={18} />
+          </a>
+          <CoupleAvatars size={30} />
+        </div>
       </header>
 
       <div className="space-y-3 pr-1 pb-40">

@@ -32,7 +32,10 @@ export const get = query({
     // Used only to build a tel: link for the "call on the phone instead"
     // fallback when an internet call won't hold.
     const partnerPhone = await getValue(ctx, "partnerPhone");
+    // "Day one" of the relationship, YYYY-MM-DD; drives the Home counter.
+    const startDate = await getValue(ctx, "startDate");
     return {
+      startDate: startDate ?? "",
       currency: currency ?? "USD",
       timezone: timezone ?? "UTC",
       theme: (theme === "light" ? "light" : "dark") as "light" | "dark",
@@ -46,11 +49,17 @@ export const save = mutation({
     currency: v.string(),
     timezone: v.string(),
     partnerPhone: v.optional(v.string()),
+    startDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireUserId(ctx);
     await setValue(ctx, "currency", args.currency);
     await setValue(ctx, "timezone", args.timezone);
+    if (args.startDate !== undefined) {
+      const d = args.startDate.trim();
+      if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error("Use a valid date");
+      await setValue(ctx, "startDate", d);
+    }
     if (args.partnerPhone !== undefined) {
       await setValue(ctx, "partnerPhone", args.partnerPhone.trim());
     }

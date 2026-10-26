@@ -1,6 +1,6 @@
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, Volume2, VolumeX } from 'lucide-react';
+import { Mic, Volume2, VolumeX, Heart, HeartHandshake, Music, Moon, CloudRain, LucideIcon } from 'lucide-react';
 import { haptic } from '../../lib/haptics';
 import { Action, ActionKind, COUPLE_ACTIONS, GIFTS, Gift, LIKES, MiniApi, Who, Zone } from './catalog';
 import { giftUrl } from './giftArt';
@@ -111,7 +111,7 @@ export const MiniWorldView: React.FC = () => {
     sfx('yay');
     haptic('success');
     bumpLove(6);
-    setToast('Cheered up!  +6 💜');
+    setToast('Cheered up!  +6 love');
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 2000);
   };
@@ -247,7 +247,7 @@ export const MiniWorldView: React.FC = () => {
 
       {/* love meter */}
       <div className="flex items-center gap-3">
-        <span className="text-lg">💜</span>
+        <Heart size={18} className="text-coral" fill="currentColor" />
         <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
           <motion.div
             className="h-full bg-gradient-to-r from-pink-400 to-nothing-purple"
@@ -344,11 +344,11 @@ export const MiniWorldView: React.FC = () => {
       {/* together + talk */}
       <div className="grid grid-cols-6 gap-2">
         {[
-          { label: 'Hug', emoji: '🤗', run: () => together('hug') },
-          { label: 'Kiss', emoji: '😘', run: () => together('kiss') },
-          { label: 'Dance', emoji: '💃', run: () => together('dance') },
-          { label: 'Nap', emoji: '😴', run: nap },
-          { label: 'Sad', emoji: '🥺', run: sulk },
+          { label: 'Hug', icon: HeartHandshake, run: () => together('hug') },
+          { label: 'Kiss', icon: Heart, run: () => together('kiss') },
+          { label: 'Dance', icon: Music, run: () => together('dance') },
+          { label: 'Nap', icon: Moon, run: nap },
+          { label: 'Sad', icon: CloudRain, run: sulk },
         ].map((b) => (
           <motion.button
             key={b.label}
@@ -356,7 +356,7 @@ export const MiniWorldView: React.FC = () => {
             onClick={b.run}
             className="py-3 rounded-2xl glass flex flex-col items-center gap-1"
           >
-            <span className="text-xl leading-none">{b.emoji}</span>
+            <b.icon size={22} />
             <span className="text-[10px] text-white/60">{b.label}</span>
           </motion.button>
         ))}

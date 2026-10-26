@@ -30,6 +30,8 @@ export interface AppSettings {
   theme?: 'light' | 'dark';
   /** Optional number backing the tel: fallback on the Call screen. */
   partnerPhone: string;
+  /** Day one of the relationship, YYYY-MM-DD, or empty if not set. */
+  startDate: string;
 }
 
 export type WidgetSize = 'small' | 'wide' | 'tall' | 'large';

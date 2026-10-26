@@ -1,408 +1,314 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { motion } from 'motion/react';
 import { api } from '../../convex/_generated/api';
-import { WidgetConfig, WidgetSize } from '../types';
 import { TogetherCalendar } from './TogetherCalendar';
 import { useLightbox } from './Lightbox';
-import { CoupleAvatars } from './Avatar';
+import { Avatar } from './Avatar';
+import { useNotifications } from './NotificationProvider';
 import { currencySymbol } from '../lib/currency';
-import {
-  Wallet,
-  Smile,
-  Activity,
-  Coffee,
-  Image as ImageIcon,
-  Sparkles,
-  Lock,
-  ChevronRight,
-  Maximize2,
-  Flame,
-} from 'lucide-react';
-
-function usePrefersReducedMotion() {
-  const [reduced] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  );
-  return reduced;
-}
-
-// Cycles a single "lit" index through a set of that size, one at a time —
-// drives the memories widget's black-and-white-to-colour reveal so it feels
-// alive instead of a flat static grayscale grid.
-function useCycleIndex(length: number, intervalMs: number, paused: boolean) {
-  const [index, setIndex] = useState(0);
-  useEffect(() => {
-    if (paused || length <= 1) return;
-    const id = setInterval(() => setIndex((i) => (i + 1) % length), intervalMs);
-    return () => clearInterval(id);
-  }, [length, intervalMs, paused]);
-  return index;
-}
-
-const DEFAULT_WIDGETS: WidgetConfig[] = [
-  { id: 'calendar', size: 'small', order: 1 },
-  { id: 'memories', size: 'wide', order: 2 },
-  { id: 'insight', size: 'tall', order: 3 },
-  { id: 'stats', size: 'small', order: 4 },
-  { id: 'capsule', size: 'small', order: 5 },
-  { id: 'activity', size: 'wide', order: 6 },
-];
+import { haptic } from '../lib/haptics';
+import { Bell, Phone, MessageCircle, Lock, Wallet, Flame, ChevronRight, Sparkles, Check } from 'lucide-react';
 
 interface DashboardProps {
-  /** Lets widgets act as entry points into their full screens. */
+  /** Lets cards act as entry points into their full screens. */
   onNavigate: (tab: string) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
-  const [isEditing, setIsEditing] = useState(false);
+const MOODS = [
+  { value: 2, label: 'Low' },
+  { value: 4, label: 'Meh' },
+  { value: 6, label: 'Okay' },
+  { value: 8, label: 'Good' },
+  { value: 10, label: 'Great' },
+] as const;
 
-  const stats = useQuery(api.tracking.stats);
+const DAY_MS = 86_400_000;
+
+function kmBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const h =
+    Math.sin(rad(b.lat - a.lat) / 2) ** 2 +
+    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+/** Whole days since a YYYY-MM-DD, counting that day as day 1. */
+function dayCount(startDate: string): number | null {
+  if (!startDate) return null;
+  const start = new Date(`${startDate}T00:00:00`);
+  if (Number.isNaN(+start)) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.max(1, Math.round((+today - +start) / DAY_MS) + 1);
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
+  const me = useQuery(api.users.current);
+  const partner = useQuery(api.users.partner);
+  const settings = useQuery(api.settings.get);
   const recent = useQuery(api.tracking.list) ?? [];
   const memories = useQuery(api.memories.list) ?? [];
+  const onThisDay = useQuery(api.memories.onThisDay) ?? [];
   const insights = useQuery(api.insights.list) ?? [];
   const capsules = useQuery(api.capsules.list) ?? [];
   const streak = useQuery(api.tracking.streak);
-  const onThisDay = useQuery(api.memories.onThisDay) ?? [];
-  const settings = useQuery(api.settings.get) ?? { currency: 'USD', timezone: 'UTC' };
-  const widgetsDoc = useQuery(api.widgets.list);
-  const saveWidgets = useMutation(api.widgets.saveAll);
   const balance = useQuery(api.expenses.balance);
+  const live = useQuery(api.liveLocations.both);
+  const addEntry = useMutation(api.tracking.add);
   const { openGallery } = useLightbox();
+  const { unreadTotal } = useNotifications();
 
-  const reducedMotion = usePrefersReducedMotion();
-  const memoryCycleIndex = useCycleIndex(memories.length || 1, 2600, reducedMotion || memories.length <= 1);
+  const [moodSaved, setMoodSaved] = useState<number | null>(null);
+  const [moodError, setMoodError] = useState(false);
 
-  const memoryPhotos = memories
-    .filter((m) => !!m.imageUrl)
-    .map((m) => ({
-      src: m.imageUrl as string,
-      alt: m.title,
-      caption: m.title,
-      subcaption: m.location,
-    }));
+  const currency = settings?.currency ?? 'USD';
+  const days = dayCount(settings?.startDate ?? '');
 
-  const widgets: WidgetConfig[] =
-    widgetsDoc && widgetsDoc.length > 0
-      ? widgetsDoc.map((w) => ({ id: w.widgetId, size: w.size, order: w.order }))
-      : DEFAULT_WIDGETS;
+  // The photo card: a memory from this day in a past year if there is one,
+  // otherwise the latest photo.
+  const feature = onThisDay.find((m) => m.imageUrl) ?? memories.find((m) => m.imageUrl);
+  const featureIsOnThisDay = !!feature && onThisDay.some((m) => m._id === feature._id);
+  const featureYears = feature
+    ? Math.max(1, new Date().getFullYear() - new Date(feature.memoryDate ?? feature._creationTime).getFullYear())
+    : 0;
+  const photos = useMemo(
+    () =>
+      memories
+        .filter((m) => !!m.imageUrl)
+        .map((m) => ({ src: m.imageUrl as string, alt: m.title, caption: m.title, subcaption: m.location })),
+    [memories],
+  );
 
-  const getCurrencySymbol = currencySymbol;
-
-  const cycleSize = (id: string) => {
-    const sizes: WidgetSize[] = ['small', 'wide', 'tall', 'large'];
-    const newWidgets = widgets.map((w) => {
-      if (w.id === id) {
-        const currentIndex = sizes.indexOf(w.size);
-        const nextIndex = (currentIndex + 1) % sizes.length;
-        return { ...w, size: sizes[nextIndex] };
-      }
-      return w;
-    });
-    saveWidgets({ widgets: newWidgets.map((w, i) => ({ id: w.id, size: w.size, order: i })) });
-  };
-
-  const getSizeClass = (size: WidgetSize) => {
-    switch (size) {
-      case 'small': return 'col-span-1 row-span-1';
-      case 'wide': return 'col-span-2 row-span-1';
-      case 'tall': return 'col-span-1 row-span-2';
-      case 'large': return 'col-span-2 row-span-2';
-      default: return 'col-span-1 row-span-1';
-    }
-  };
+  const distance =
+    live?.mine && live?.partner
+      ? kmBetween(
+          { lat: live.mine.lat, lng: live.mine.lng },
+          { lat: live.partner.lat, lng: live.partner.lng },
+        )
+      : null;
 
   const upcomingCapsule = capsules.find((c) => new Date(c.unlockDate) > new Date());
+  const capsuleDays = upcomingCapsule
+    ? Math.max(0, Math.ceil((+new Date(upcomingCapsule.unlockDate) - Date.now()) / DAY_MS))
+    : null;
+  const owed = balance?.byCurrency?.[0];
 
-  const renderWidget = (widget: WidgetConfig) => {
-    const commonProps = {
-      layout: true,
-      initial: { opacity: 0, scale: 0.9 },
-      animate: { opacity: 1, scale: 1 },
-      className: `glass p-6 relative group overflow-hidden ${getSizeClass(widget.size)}`,
-    };
-
-    const editOverlay = isEditing && (
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-10 flex items-center justify-center gap-2">
-        <button
-          onClick={() => cycleSize(widget.id)}
-          className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
-        >
-          <Maximize2 size={20} />
-        </button>
-      </div>
-    );
-
-    switch (widget.id) {
-      case 'calendar':
-        return (
-          <motion.div key="calendar" {...commonProps}>
-            {editOverlay}
-            <TogetherCalendar size={widget.size} />
-          </motion.div>
-        );
-      case 'memories':
-        return (
-          <motion.div key="memories" {...commonProps}>
-            {editOverlay}
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="text-white/40" size={18} />
-                <h3 className="text-[10px] uppercase tracking-widest font-medium">Memories</h3>
-              </div>
-              <span className="text-[8px] font-mono text-white/20">{stats?.totalMemories} Total</span>
-            </div>
-            <div className={`grid gap-2 ${widget.size === 'small' ? 'grid-cols-1' : widget.size === 'wide' ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              {memories.slice(0, widget.size === 'small' ? 1 : widget.size === 'large' ? 4 : 3).map((memory, i, shown) => {
-                const isLit = reducedMotion || shown.length <= 1 || i === memoryCycleIndex % shown.length;
-                return (
-                  <button
-                    key={memory._id}
-                    type="button"
-                    onClick={() =>
-                      openGallery(memoryPhotos, memoryPhotos.findIndex((p) => p.src === memory.imageUrl))
-                    }
-                    className="aspect-square rounded-xl overflow-hidden glass border border-white/5"
-                    aria-label={`View ${memory.title}`}
-                  >
-                    <img
-                      src={memory.imageUrl}
-                      alt={memory.title}
-                      className={`w-full h-full object-cover transition-all duration-1400 ease-out hover:grayscale-0 ${
-                        isLit ? 'grayscale-0' : 'grayscale'
-                      }`}
-                      referrerPolicy="no-referrer"
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          </motion.div>
-        );
-      case 'insight':
-        return (
-          <motion.div key="insight" {...commonProps} className={`${commonProps.className} bg-nothing-purple/5 border-nothing-purple/20`}>
-            {editOverlay}
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles className="text-nothing-purple" size={18} />
-              <h3 className="text-[10px] uppercase tracking-widest font-medium">Insight</h3>
-            </div>
-            {insights.length > 0 ? (
-              <div className="space-y-2">
-                <p className={`${widget.size === 'small' ? 'text-sm' : 'text-lg'} font-medium leading-tight`}>{insights[0].title}</p>
-                {widget.size !== 'small' && <p className="text-xs text-white/60 line-clamp-3">{insights[0].content}</p>}
-              </div>
-            ) : (
-              <p className="text-xs text-white/40 italic">Analyzing patterns...</p>
-            )}
-          </motion.div>
-        );
-      case 'stats': {
-        // Tapping through to the full money-split screen is the point of this
-        // widget, so it behaves like a link unless the grid is being edited.
-        const outstanding = balance?.byCurrency?.[0];
-        return (
-          <motion.div
-            key="stats"
-            {...commonProps}
-            className={`${commonProps.className} ${isEditing ? '' : 'cursor-pointer hover:bg-white/[0.06]'} transition-colors`}
-            role={isEditing ? undefined : 'button'}
-            tabIndex={isEditing ? undefined : 0}
-            onClick={() => !isEditing && onNavigate('split')}
-            onKeyDown={(e) => {
-              if (isEditing) return;
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onNavigate('split');
-              }
-            }}
-          >
-            {editOverlay}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Smile className="text-white/40" size={18} />
-                <h3 className="text-[10px] uppercase tracking-widest font-medium">Stats</h3>
-              </div>
-              <ChevronRight size={14} className="text-white/20" />
-            </div>
-            <div className={`grid ${widget.size === 'wide' || widget.size === 'large' ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
-              <div>
-                <p className="text-xl font-mono">{(stats?.avgMood || 0).toFixed(1)}</p>
-                <p className="text-[8px] uppercase tracking-widest text-white/20">Avg Mood</p>
-              </div>
-              <div>
-                <p className="text-xl font-mono">
-                  {getCurrencySymbol(settings.currency)}{(stats?.totalMoney ?? 0).toFixed(0)}
-                </p>
-                <p className="text-[8px] uppercase tracking-widest text-white/20">Spent</p>
-              </div>
-            </div>
-            {outstanding && (
-              <p
-                className={`mt-3 text-[10px] font-mono ${
-                  outstanding.net > 0 ? 'text-green-400' : 'text-orange-400'
-                }`}
-              >
-                {outstanding.net > 0 ? 'Owed to you' : 'You owe'}{' '}
-                {getCurrencySymbol(outstanding.currency)}
-                {Math.abs(outstanding.net).toFixed(2)}
-              </p>
-            )}
-          </motion.div>
-        );
-      }
-      case 'capsule':
-        return (
-          <motion.div key="capsule" {...commonProps}>
-            {editOverlay}
-            <div className="flex items-center gap-2 mb-4">
-              <Lock className="text-white/40" size={18} />
-              <h3 className="text-[10px] uppercase tracking-widest font-medium">Capsule</h3>
-            </div>
-            {upcomingCapsule ? (
-              <div className="space-y-1">
-                <p className="text-xs font-medium truncate">{upcomingCapsule.title}</p>
-                <p className="text-[8px] font-mono text-nothing-purple">
-                  {new Date(upcomingCapsule.unlockDate).toLocaleDateString()}
-                </p>
-              </div>
-            ) : (
-              <p className="text-xs text-white/40">None scheduled</p>
-            )}
-          </motion.div>
-        );
-      case 'activity':
-        return (
-          <motion.div key="activity" {...commonProps}>
-            {editOverlay}
-            <div className="flex items-center gap-2 mb-4">
-              <Activity className="text-white/40" size={18} />
-              <h3 className="text-[10px] uppercase tracking-widest font-medium">Activity</h3>
-            </div>
-            <div className="space-y-2">
-              {recent.slice(0, widget.size === 'small' ? 1 : 2).map((entry) => (
-                <div key={entry._id} className="flex items-center justify-between text-xs">
-                  <span className="text-white/60 truncate mr-2">{entry.category || entry.type}</span>
-                  <span className="font-mono text-white/40">{entry.value}</span>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        );
-      default:
-        return null;
+  const logMood = async (value: number) => {
+    haptic('success');
+    setMoodSaved(value);
+    setMoodError(false);
+    try {
+      await addEntry({ type: 'mood', value, category: 'Mood' });
+    } catch (err) {
+      console.error('Mood log failed', err);
+      setMoodSaved(null);
+      setMoodError(true);
     }
   };
 
+  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+  const partnerName = partner?.name ?? 'Your person';
+
   return (
-    <div className="space-y-8 pb-32">
-      <header className="flex justify-between items-end">
-        <div className="space-y-1">
-          <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">Mobu</h1>
-          <p className="text-white/40 text-[10px] uppercase tracking-widest">Intelligence Hub</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <CoupleAvatars size={30} />
-          {!!streak?.days && (
-            <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400" title="Consecutive days you've both logged something">
-              <Flame size={12} />
-              <span className="text-[10px] font-mono">{streak.days}</span>
-            </div>
-          )}
-          <button
-            onClick={() => setIsEditing(!isEditing)}
-            className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-widest border transition-all ${
-              isEditing ? 'bg-nothing-purple border-nothing-purple text-white' : 'border-white/10 text-white/40 hover:border-white/20'
-            }`}
-          >
-            {isEditing ? 'Done' : 'Edit Layout'}
-          </button>
-        </div>
+    <div className="space-y-5 pb-32">
+      <header className="flex items-center justify-between">
+        <p className="text-xs uppercase tracking-[0.14em] text-white/50">{today}</p>
+        <button
+          onClick={() => onNavigate('notifications')}
+          aria-label={unreadTotal > 0 ? `Alerts, ${unreadTotal} unread` : 'Alerts'}
+          className="relative flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-surface text-white"
+        >
+          <Bell size={19} />
+          {unreadTotal > 0 && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-coral" />}
+        </button>
       </header>
 
-      {onThisDay.length > 0 && (
-        <section className="glass p-6 space-y-4 bg-nothing-purple/5 border-nothing-purple/20">
-          <div className="flex items-center gap-2">
-            <Sparkles size={14} className="text-nothing-purple" />
-            <h2 className="text-[10px] uppercase tracking-[0.2em] text-white/60">On This Day</h2>
+      <section className="space-y-1.5">
+        {days != null ? (
+          <h1 className="font-display text-5xl font-medium leading-[1.02] tracking-tight">
+            Day {days.toLocaleString()}
+            <br />
+            <span className="font-normal italic text-nothing-purple">of us.</span>
+          </h1>
+        ) : (
+          <>
+            <h1 className="font-display text-5xl font-medium leading-[1.02] tracking-tight">
+              Hello,
+              <br />
+              <span className="font-normal italic text-nothing-purple">{me?.name ?? 'you'}.</span>
+            </h1>
+            <button onClick={() => onNavigate('settings')} className="text-sm text-nothing-purple underline underline-offset-4">
+              Set your day one to start the counter
+            </button>
+          </>
+        )}
+        <div className="flex items-center gap-3 text-sm text-white/60">
+          <span>
+            {me?.name ?? 'You'} &amp; {partnerName}
+          </span>
+          {!!streak?.days && (
+            <span
+              className="flex items-center gap-1 rounded-full bg-gold/15 px-2.5 py-0.5 text-xs text-gold"
+              title="Consecutive days you've both logged something"
+            >
+              <Flame size={12} /> {streak.days}-day streak
+            </span>
+          )}
+        </div>
+      </section>
+
+      <section className="glass flex items-center gap-3.5 p-3.5">
+        <Avatar name={partner?.name} avatarUrl={partner?.avatarUrl} size={52} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-base font-semibold">{partnerName}</p>
+          <p className="truncate text-sm text-white/60">
+            {distance != null
+              ? distance < 0.3
+                ? "You're together"
+                : `${distance < 10 ? distance.toFixed(1) : Math.round(distance)} km away`
+              : live?.partner
+                ? 'Sharing location'
+                : 'Location not shared'}
+          </p>
+        </div>
+        <button
+          onClick={() => onNavigate('call')}
+          aria-label={`Call ${partnerName}`}
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-raised text-white"
+        >
+          <Phone size={18} />
+        </button>
+        <button
+          onClick={() => onNavigate('chat')}
+          aria-label={`Message ${partnerName}`}
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-nothing-purple text-black"
+        >
+          <MessageCircle size={18} />
+        </button>
+      </section>
+
+      {feature && (
+        <section className="space-y-2.5">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-display text-xl font-medium">{featureIsOnThisDay ? 'On this day' : 'Latest memory'}</h2>
+            <button onClick={() => onNavigate('memories')} className="text-sm text-nothing-purple">
+              All memories
+            </button>
           </div>
-          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
-            {onThisDay.map((m, i) => (
-              <div key={m._id} className="flex-shrink-0 w-40 space-y-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    openGallery(
-                      onThisDay
-                        .filter((x) => !!x.imageUrl)
-                        .map((x) => ({
-                          src: x.imageUrl as string,
-                          alt: x.title,
-                          caption: x.title,
-                          subcaption: new Date(x.memoryDate ?? x._creationTime).getFullYear().toString(),
-                        })),
-                      i,
-                    )
-                  }
-                  className="block w-full aspect-square rounded-xl overflow-hidden"
-                  aria-label={`View ${m.title}`}
-                >
-                  <img src={m.imageUrl} alt={m.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </button>
-                <p className="text-xs font-medium truncate">{m.title}</p>
-                <p className="text-[9px] text-white/40">{new Date(m.memoryDate ?? m._creationTime).getFullYear()}</p>
-              </div>
+          <button
+            type="button"
+            onClick={() => openGallery(photos, Math.max(0, photos.findIndex((p) => p.src === feature.imageUrl)))}
+            className="relative block h-52 w-full overflow-hidden rounded-3xl bg-raised text-left"
+            aria-label={`View ${feature.title}`}
+          >
+            <img src={feature.imageUrl} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+            <span className="absolute inset-x-0 bottom-0 bg-black/75 p-4">
+              <span className="block text-xs uppercase tracking-[0.08em] text-coral">
+                {featureIsOnThisDay
+                  ? `${featureYears} year${featureYears === 1 ? '' : 's'} ago`
+                  : new Date(feature.memoryDate ?? feature._creationTime).toLocaleDateString(undefined, {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+              </span>
+              <span className="mt-0.5 block font-display text-lg">{feature.title}</span>
+            </span>
+          </button>
+        </section>
+      )}
+
+      <section className="space-y-2.5">
+        <h2 className="font-display text-xl font-medium">How are you today?</h2>
+        <div className="flex gap-2" role="group" aria-label="Log your mood">
+          {MOODS.map((m) => {
+            const on = moodSaved === m.value;
+            return (
+              <button
+                key={m.value}
+                onClick={() => logMood(m.value)}
+                aria-pressed={on}
+                className={`flex h-11 flex-1 items-center justify-center gap-1 rounded-full text-[13px] transition-colors ${
+                  on ? 'bg-nothing-purple font-semibold text-black' : 'border border-white/10 bg-surface text-white/60'
+                }`}
+              >
+                {on && <Check size={13} />}
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+        {moodError && <p className="text-xs text-coral">Couldn't save that — try again.</p>}
+        {moodSaved != null && !moodError && <p className="text-xs text-white/50">Logged. {partnerName} will see it in Our week.</p>}
+      </section>
+
+      <section className="grid grid-cols-2 gap-3">
+        <button onClick={() => onNavigate('capsules')} className="glass flex flex-col gap-2.5 p-4 text-left">
+          <Lock size={20} className="text-nothing-purple" />
+          <span className="text-[13px] text-white/60">Next capsule</span>
+          <span className="font-display text-2xl">
+            {capsuleDays == null ? 'None yet' : capsuleDays === 0 ? 'Today' : `${capsuleDays} day${capsuleDays === 1 ? '' : 's'}`}
+          </span>
+        </button>
+        <button onClick={() => onNavigate('split')} className="glass flex flex-col gap-2.5 p-4 text-left">
+          <Wallet size={20} className="text-coral" />
+          <span className="text-[13px] text-white/60">
+            {!owed || Math.abs(owed.net) < 0.005 ? 'Split' : owed.net > 0 ? `${partnerName} owes you` : `You owe ${partnerName}`}
+          </span>
+          <span className="font-display text-2xl">
+            {!owed || Math.abs(owed.net) < 0.005 ? 'All square' : `${currencySymbol(owed.currency)}${Math.abs(owed.net).toFixed(0)}`}
+          </span>
+        </button>
+      </section>
+
+      {insights.length > 0 && (
+        <section className="rounded-3xl border border-nothing-purple/25 bg-nothing-purple/10 p-5">
+          <p className="flex items-center gap-1.5 text-xs uppercase tracking-[0.1em] text-nothing-purple">
+            <Sparkles size={13} /> Noticed
+          </p>
+          <p className="mt-1.5 font-display text-xl leading-snug">{insights[0].title}</p>
+          {insights[0].content && <p className="mt-1 text-sm text-white/60 line-clamp-3">{insights[0].content}</p>}
+        </section>
+      )}
+
+      <section className="glass p-5">
+        <h2 className="mb-3 font-display text-xl font-medium">Our days together</h2>
+        <TogetherCalendar size="wide" />
+      </section>
+
+      {recent.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-display text-xl font-medium">Recent</h2>
+            <button onClick={() => onNavigate('logs')} className="flex items-center gap-0.5 text-sm text-nothing-purple">
+              All <ChevronRight size={14} />
+            </button>
+          </div>
+          <div className="space-y-2">
+            {recent.slice(0, 4).map((entry, i) => (
+              <motion.div
+                key={entry._id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
+                className="glass flex items-center justify-between gap-3 px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{entry.category || entry.type}</p>
+                  <p className="text-xs text-white/50">
+                    {entry.user} ·{' '}
+                    {new Date(entry._creationTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-semibold">
+                  {entry.type === 'money' ? `-${currencySymbol(currency)}${entry.value}` : entry.value}
+                </p>
+              </motion.div>
             ))}
           </div>
         </section>
       )}
-
-      {/* Tetris Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 grid-flow-dense">
-        {widgets.map(renderWidget)}
-      </div>
-
-      {/* Recent Activity List */}
-      <section className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-[10px] uppercase tracking-[0.2em] text-white/40">Recent Activity</h2>
-          <button
-            onClick={() => onNavigate('logs')}
-            className="text-[10px] uppercase tracking-widest text-white/20 hover:text-white/40 flex items-center gap-1"
-          >
-            View All <ChevronRight size={12} />
-          </button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {recent.slice(0, 4).map((entry, i) => (
-            <motion.div
-              key={entry._id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="glass-dark p-4 flex items-center justify-between group hover:bg-white/[0.02] transition-colors rounded-2xl"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-nothing-purple/10 transition-colors">
-                  {entry.type === 'money' && <Wallet size={16} className="text-white/40 group-hover:text-nothing-purple" />}
-                  {entry.type === 'mood' && <Smile size={16} className="text-white/40 group-hover:text-nothing-purple" />}
-                  {entry.type === 'activity' && <Activity size={16} className="text-white/40 group-hover:text-nothing-purple" />}
-                  {entry.type === 'food' && <Coffee size={16} className="text-white/40 group-hover:text-nothing-purple" />}
-                </div>
-                <div>
-                  <p className="text-xs font-medium">{entry.category || entry.type}</p>
-                  <p className="text-[8px] text-white/40 uppercase tracking-wider">{entry.user} • {new Date(entry._creationTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-xs font-mono">
-                  {entry.type === 'money' ? `-${getCurrencySymbol(settings.currency)}${entry.value}` : entry.value}
-                </p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 };

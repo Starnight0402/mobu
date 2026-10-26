@@ -105,7 +105,7 @@ export const MemoryBoard: React.FC = () => {
   );
   const setSelectedMemory = (m: Memory | null) => setSelectedId(m ? m._id : null);
   const [isEditing, setIsEditing] = useState(false);
-  const [viewMode, setViewMode] = useState<'web' | 'grid'>('web');
+  const [viewMode, setViewMode] = useState<'web' | 'grid'>('grid');
   const [uploading, setUploading] = useState(false);
   const [locating, setLocating] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -529,87 +529,110 @@ export const MemoryBoard: React.FC = () => {
       <div className="absolute inset-0 pointer-events-none opacity-20"
            style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
 
-      <div className="absolute top-5 left-5 sm:top-8 sm:left-8 z-10 space-y-1 pointer-events-none">
-        <h1 className="text-xl sm:text-2xl font-medium tracking-tight dot-matrix">{viewMode === 'web' ? 'Hall of Memories' : 'Gallery'}</h1>
-        <p className="text-white/40 text-[10px] uppercase tracking-widest">
-          {viewMode === 'web' ? 'Drag to look around' : `${memories.length} memories`}
-        </p>
-      </div>
-
-      <div className="absolute top-5 right-5 sm:top-8 sm:right-8 z-10 flex gap-2">
-        <div className="glass p-1 flex gap-1">
-          <button
-            onClick={() => setViewMode('web')}
-            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${viewMode === 'web' ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
-            title="Memory web"
-          >
-            <Waypoints size={14} />
-          </button>
-          <button
-            onClick={() => setViewMode('grid')}
-            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${viewMode === 'grid' ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
-            title="Grid view"
-          >
-            <LayoutGrid size={14} />
-          </button>
+      <div className="absolute inset-x-0 top-0 z-10 space-y-3 p-4 sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-medium tracking-tight dot-matrix">Memories</h1>
+            <p className="text-xs text-white/50">
+              {viewMode === 'web' ? 'Drag to look around' : `${memories.length} memories`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {viewMode === 'web' && (
+              <button
+                onClick={reCenter}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-surface text-white"
+                title="Recenter"
+                aria-label="Recenter"
+              >
+                <Maximize2 size={16} />
+              </button>
+            )}
+            <button
+              onClick={() => setComposerOpen(true)}
+              aria-label="Add memories"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-coral text-black shadow-lg active:scale-95 transition-transform"
+            >
+              <Plus size={20} />
+            </button>
+          </div>
         </div>
-        {viewMode === 'web' && (
-          <button
-            onClick={reCenter}
-            className="w-10 h-10 rounded-full glass text-white flex items-center justify-center hover:bg-white/10 transition-all"
-            title="Recenter"
-          >
-            <Maximize2 size={16} />
-          </button>
-        )}
-        <button
-          onClick={() => setComposerOpen(true)}
-          aria-label="Add memories"
-          className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-all shadow-xl"
-        >
-          <Plus size={20} />
-        </button>
+
+        <div role="tablist" aria-label="Ways to look at memories" className="flex gap-1 overflow-x-auto no-scrollbar rounded-full border border-white/10 bg-surface p-1">
+          {([
+            { id: 'grid', label: 'Gallery' },
+            { id: 'web', label: 'Web' },
+          ] as const).map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={viewMode === t.id}
+              onClick={() => setViewMode(t.id)}
+              className={`h-9 shrink-0 rounded-full px-4 text-[13px] transition-colors ${
+                viewMode === t.id ? 'bg-white font-semibold text-black' : 'text-white/60'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+          {([
+            { id: 'timeline', label: 'Timeline' },
+            { id: 'map', label: 'Map' },
+            { id: 'capsules', label: 'Capsules' },
+          ] as const).map((t) => (
+            <a
+              key={t.id}
+              href={`#/${t.id}`}
+              role="tab"
+              aria-selected={false}
+              className="flex h-9 shrink-0 items-center rounded-full px-4 text-[13px] text-white/60"
+            >
+              {t.label}
+            </a>
+          ))}
+        </div>
       </div>
 
       {viewMode === 'grid' && (
-        <div className="absolute inset-0 pt-28 pb-8 px-8 overflow-y-auto">
+        <div className="absolute inset-0 pt-36 pb-8 px-4 sm:px-8 overflow-y-auto">
           <div className="space-y-8">
             {galleryGroups.map((group) => (
               <section key={group.key}>
                 {group.album && (
                   <div className="flex items-baseline justify-between mb-3 px-1">
-                    <h2 className="text-lg font-serif text-white">{group.album}</h2>
-                    <p className="text-[10px] text-white/40 uppercase tracking-widest">
+                    <h2 className="font-display text-xl text-white">{group.album}</h2>
+                    <p className="text-xs text-white/50">
                       {group.items.length} photos
                       {group.when != null && ' · ' + new Date(group.when).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
                     </p>
                   </div>
                 )}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="columns-2 md:columns-3 lg:columns-4 gap-3">
                   {group.items.map((memory) => (
                     <button
                       key={memory._id}
                       onClick={() => setSelectedMemory(memory)}
-                      className="aspect-square rounded-2xl overflow-hidden glass border border-white/5 relative group text-left"
+                      className="mb-3 block w-full break-inside-avoid overflow-hidden rounded-2xl border border-white/10 bg-surface p-2 text-left active:scale-[0.99] transition-transform"
                     >
                       <img
                         src={memory.imageUrl}
-                        alt={memory.title}
+                        alt=""
                         loading="lazy"
                         decoding="async"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full rounded-xl object-cover"
                         referrerPolicy="no-referrer"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-3">
-                        <div>
-                          <p className="text-xs font-medium text-white truncate">{memory.title}</p>
-                          {memory.location && (
-                            <p className="text-[9px] text-white/60 flex items-center gap-1 mt-0.5">
-                              <MapPin size={9} /> {memory.location}
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                      <p className="mx-1 mt-2 truncate font-display text-[15px]">{memory.title}</p>
+                      <p className="mx-1 mb-1 flex items-center gap-1 truncate text-xs text-white/50">
+                        {new Date(memory.memoryDate ?? memory._creationTime).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                        {memory.location && (
+                          <>
+                            <span>·</span>
+                            <MapPin size={10} className="shrink-0" />
+                            <span className="truncate">{memory.location}</span>
+                          </>
+                        )}
+                      </p>
                     </button>
                   ))}
                 </div>
