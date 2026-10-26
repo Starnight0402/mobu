@@ -113,6 +113,21 @@ export default defineSchema({
     .index("by_payer", ["payerId"])
     .index("by_settled", ["settled"]),
 
+  // Expenses that repeat monthly. The daily job (recurring.runDue) turns a rule
+  // into a normal expense on its day; lastCreatedFor ("YYYY-MM") is what keeps
+  // it to one per month.
+  recurringExpenses: defineTable({
+    amount: v.number(),
+    payerId: v.id("users"),
+    splitRatio: v.number(), // payer's share, 0-100
+    category: v.string(),
+    currency: v.string(),
+    note: v.optional(v.string()),
+    dayOfMonth: v.number(), // 1-28
+    active: v.boolean(),
+    lastCreatedFor: v.optional(v.string()),
+  }),
+
   // A record of money actually changing hands. Settling used to just flip
   // every expense's `settled` flag, which erased any trace of who paid whom.
   settlements: defineTable({

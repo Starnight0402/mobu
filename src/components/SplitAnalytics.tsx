@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, TrendingDown, TrendingUp, Trophy, Receipt, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, TrendingDown, TrendingUp, Trophy, Receipt, Calendar, PiggyBank, Pencil } from 'lucide-react';
 import { formatMoney } from '../lib/currency';
 
 /** The slice of an expense row the analytics needs. */
@@ -63,12 +63,122 @@ function previousRange(mode: Mode, year: number, month: number): Range | null {
   return null;
 }
 
+/** How far through the current month we are, 0..1 (by the clock, so it moves all day). */
+function monthProgress(now = new Date()): number {
+  const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return Math.min(1, (now.getDate() - 1 + (now.getHours() * 60 + now.getMinutes()) / 1440) / days);
+}
+
+/** Spent vs a monthly budget: a bar, what's left, and where this pace lands. */
+export const BudgetBar: React.FC<{ spent: number; budget: number; currency: string }> = ({ spent, budget, currency }) => {
+  const pct = budget > 0 ? spent / budget : 0;
+  const left = budget - spent;
+  const progress = monthProgress();
+  const projected = progress >= 0.1 ? spent / progress : null;
+  const colour = pct < 0.8 ? '#9ed9b6' : pct < 1 ? '#f2c879' : '#ff8f7e';
+  return (
+    <div className="space-y-2">
+      <div className="h-3 overflow-hidden rounded-full bg-white/10" role="img" aria-label={`${Math.round(pct * 100)} percent of the monthly budget used`}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, pct * 100)}%`, background: colour }} />
+      </div>
+      <div className="flex items-baseline justify-between gap-3 text-sm">
+        <span style={{ color: colour }} className="font-medium">
+          {left >= 0 ? `${formatMoney(left, currency)} left` : `${formatMoney(-left, currency)} over`}
+        </span>
+        <span className="text-white/50">of {formatMoney(budget, currency)}</span>
+      </div>
+      {projected != null && (
+        <p className="text-xs text-white/50">
+          At this pace: {formatMoney(projected, currency)} by month end
+          {projected > budget ? ' — over budget' : ''}
+        </p>
+      )}
+    </div>
+  );
+};
+
+/** The always-visible "how much have we spent" card at the top of the expense list. */
+export const SpendSummary: React.FC<{
+  expenses: AnalyticsExpense[];
+  currency: string;
+  budget: number;
+  onOpenAnalytics: () => void;
+  onEditBudget: () => void;
+}> = ({ expenses, currency, budget, onOpenAnalytics, onEditBudget }) => {
+  const now = new Date();
+  const mine = expenses.filter((e) => e.currency === currency);
+  const from = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const thisMonth = sum(mine.filter((e) => e.spentAt >= from));
+  const lastFrom = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+  const lastMonth = sum(mine.filter((e) => e.spentAt >= lastFrom && e.spentAt < from));
+  const yearFrom = new Date(now.getFullYear(), 0, 1).getTime();
+  const thisYear = sum(mine.filter((e) => e.spentAt >= yearFrom));
+  const all = sum(mine);
+  const monthName = now.toLocaleDateString(undefined, { month: 'long' });
+
+  return (
+    <section className="glass space-y-4 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-white/60">We've spent in {monthName}</p>
+          <p className="font-display text-4xl font-medium tracking-tight">{formatMoney(thisMonth, currency)}</p>
+          {lastMonth > 0 && (
+            <p className="mt-1 text-xs text-white/50">
+              {formatMoney(lastMonth, currency)} last month
+            </p>
+          )}
+        </div>
+        <button
+          onClick={onOpenAnalytics}
+          className="flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-surface px-4 text-[13px] text-white/80"
+        >
+          Analytics <ChevronRight size={14} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-3.5">
+          <p className="text-xs text-white/50">{now.getFullYear()} so far</p>
+          <p className="font-display text-lg">{formatMoney(thisYear, currency)}</p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-3.5">
+          <p className="text-xs text-white/50">All time</p>
+          <p className="font-display text-lg">{formatMoney(all, currency)}</p>
+        </div>
+      </div>
+
+      {budget > 0 ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-1.5 text-xs uppercase tracking-[0.1em] text-white/50">
+              <PiggyBank size={14} /> {monthName} budget
+            </p>
+            <button onClick={onEditBudget} aria-label="Edit budget" className="flex h-8 w-8 items-center justify-center rounded-full text-white/60">
+              <Pencil size={14} />
+            </button>
+          </div>
+          <BudgetBar spent={thisMonth} budget={budget} currency={currency} />
+        </div>
+      ) : (
+        <button
+          onClick={onEditBudget}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/20 text-sm text-white/70"
+        >
+          <PiggyBank size={16} /> Set a monthly budget
+        </button>
+      )}
+    </section>
+  );
+};
+
 export const AnalyticsView: React.FC<{
   expenses: AnalyticsExpense[];
   partnerName: string;
   defaultCurrency: string;
+  budget: number;
+  onEditBudget: () => void;
   categoryIcon: (category: string) => React.ComponentType<{ size?: number; className?: string }>;
-}> = ({ expenses, partnerName, defaultCurrency, categoryIcon: CategoryIcon }) => {
+}> = ({ expenses, partnerName, defaultCurrency, budget, onEditBudget, categoryIcon: CategoryIcon }) => {
   const now = new Date();
   const [mode, setMode] = useState<Mode>('month');
   const [year, setYear] = useState(now.getFullYear());
@@ -260,6 +370,24 @@ export const AnalyticsView: React.FC<{
           )}
         </div>
       </section>
+
+      {mode === 'month' && atPresent && currency === defaultCurrency && (
+        <section className="glass space-y-3 p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-2 font-display text-lg">
+              <PiggyBank size={17} className="text-nothing-purple" /> Monthly budget
+            </h2>
+            <button onClick={onEditBudget} className="text-sm text-nothing-purple">
+              {budget > 0 ? 'Edit' : 'Set'}
+            </button>
+          </div>
+          {budget > 0 ? (
+            <BudgetBar spent={total} budget={budget} currency={currency} />
+          ) : (
+            <p className="text-sm text-white/50">Set a shared limit and see how much is left as the month goes.</p>
+          )}
+        </section>
+      )}
 
       {rows.length === 0 ? (
         <div className="glass p-8 text-center text-sm text-white/50">No expenses in this period.</div>

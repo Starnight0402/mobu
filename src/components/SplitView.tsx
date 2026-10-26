@@ -6,7 +6,7 @@ import { Id } from '../../convex/_generated/dataModel';
 import { useBackHandler } from '../lib/backButtonStack';
 import { CURRENCIES, currencySymbol, formatMoney } from '../lib/currency';
 import { SplitwiseImportModal } from './SplitwiseImportModal';
-import { AnalyticsView } from './SplitAnalytics';
+import { AnalyticsView, SpendSummary } from './SplitAnalytics';
 import { buildExpenseCsv, parseExpenseCsv } from '../lib/expenseCsv';
 import { saveTextFile } from '../lib/saveFile';
 import {
@@ -30,6 +30,9 @@ import {
   Search,
   FileUp,
   AlertTriangle,
+  Repeat,
+  Pause,
+  Play,
 } from 'lucide-react';
 
 type Expense = NonNullable<ReturnType<typeof useExpenses>>[number];
@@ -47,6 +50,13 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<{ size?: number; classN
   Travel: Plane,
 };
 const QUICK_CATEGORIES = ['Food', 'Groceries', 'Transport', 'Rent', 'Shopping', 'Entertainment', 'Travel'];
+
+/** 1st, 2nd, 3rd, 4th … 11th, 12th, 13th, 21st. */
+function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  const suffix = teen ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th';
+  return `${n}${suffix}`;
+}
 
 function categoryIcon(category: string) {
   return CATEGORY_ICONS[category] ?? Coins;
@@ -79,6 +89,11 @@ export const SplitView: React.FC = () => {
   const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'expenses' | 'analytics'>('expenses');
+  const [catFilter, setCatFilter] = useState<string | null>(null);
+  const [payerFilter, setPayerFilter] = useState<'all' | 'me' | 'them'>('all');
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const [recurringOpen, setRecurringOpen] = useState(false);
+  const recurring = useQuery(api.recurring.list) ?? [];
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
@@ -88,13 +103,23 @@ export const SplitView: React.FC = () => {
   const defaultCurrency = settings?.currency ?? 'USD';
   const partnerName = balance?.partnerName ?? 'your partner';
 
+  const categoriesInUse = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of expenses) counts.set(e.category, (counts.get(e.category) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+  }, [expenses]);
+
   const searched = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return expenses;
-    return expenses.filter((e) =>
-      [e.category, e.note ?? '', e.payerName, e.currency].some((f) => f.toLowerCase().includes(q)),
-    );
-  }, [expenses, search]);
+    return expenses.filter((e) => {
+      if (catFilter && e.category !== catFilter) return false;
+      if (payerFilter === 'me' && !e.paidByMe) return false;
+      if (payerFilter === 'them' && e.paidByMe) return false;
+      if (!q) return true;
+      return [e.category, e.note ?? '', e.payerName, e.currency].some((f) => f.toLowerCase().includes(q));
+    });
+  }, [expenses, search, catFilter, payerFilter]);
+  const filtering = !!catFilter || payerFilter !== 'all' || !!search.trim();
 
   const visible = showSettled ? searched : searched.filter((e) => !e.settled);
 
@@ -253,10 +278,20 @@ export const SplitView: React.FC = () => {
           expenses={expenses}
           partnerName={partnerName}
           defaultCurrency={defaultCurrency}
+          budget={settings?.monthlyBudget ?? 0}
+          onEditBudget={() => setBudgetOpen(true)}
           categoryIcon={categoryIcon}
         />
       ) : (
         <>
+      <SpendSummary
+        expenses={expenses}
+        currency={defaultCurrency}
+        budget={settings?.monthlyBudget ?? 0}
+        onOpenAnalytics={() => setTab('analytics')}
+        onEditBudget={() => setBudgetOpen(true)}
+      />
+
       <div className="relative">
         <Search size={15} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
         <input
@@ -267,6 +302,52 @@ export const SplitView: React.FC = () => {
           className="nothing-input w-full pl-10 text-sm"
         />
       </div>
+
+      <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 no-scrollbar" role="group" aria-label="Filters">
+        <button
+          onClick={() => setRecurringOpen(true)}
+          className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-nothing-purple/40 bg-nothing-purple/10 px-3.5 text-[13px] text-nothing-purple"
+        >
+          <Repeat size={13} /> Monthly{recurring.length > 0 ? ` · ${recurring.filter((r) => r.active).length}` : ''}
+        </button>
+        {(
+          [
+            { id: 'all', label: 'Everyone' },
+            { id: 'me', label: 'Paid by you' },
+            { id: 'them', label: `Paid by ${partnerName}` },
+          ] as const
+        ).map((f) => (
+          <button
+            key={f.id}
+            onClick={() => setPayerFilter(f.id)}
+            aria-pressed={payerFilter === f.id}
+            className={`h-9 shrink-0 rounded-full px-3.5 text-[13px] ${
+              payerFilter === f.id ? 'bg-white font-semibold text-black' : 'border border-white/10 bg-surface text-white/60'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+        <span className="mx-0.5 h-5 w-px shrink-0 bg-white/15" aria-hidden="true" />
+        {categoriesInUse.map((c) => (
+          <button
+            key={c}
+            onClick={() => setCatFilter(catFilter === c ? null : c)}
+            aria-pressed={catFilter === c}
+            className={`h-9 shrink-0 rounded-full px-3.5 text-[13px] ${
+              catFilter === c ? 'bg-nothing-purple font-semibold text-black' : 'border border-white/10 bg-surface text-white/60'
+            }`}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+      {filtering && (
+        <p className="-mt-3 ml-1 text-xs text-white/50">
+          {visible.length} expense{visible.length === 1 ? '' : 's'} · {formatMoney(visible.reduce((t, e) => t + e.amount, 0), defaultCurrency)}
+          {new Set(visible.map((e) => e.currency)).size > 1 ? ' (mixed currencies)' : ''}
+        </p>
+      )}
 
       {/* Balance */}
       <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="glass p-6 space-y-4">
@@ -457,6 +538,14 @@ export const SplitView: React.FC = () => {
             }}
           />
         )}
+        {budgetOpen && (
+          <BudgetSheet
+            current={settings?.monthlyBudget ?? 0}
+            currency={defaultCurrency}
+            onClose={() => setBudgetOpen(false)}
+          />
+        )}
+        {recurringOpen && <RecurringSheet rules={recurring} partnerName={partnerName} onClose={() => setRecurringOpen(false)} />}
         {composerOpen && (
           <ExpenseComposer
             existing={editing}
@@ -495,7 +584,7 @@ const Sheet: React.FC<{ title: string; onClose: () => void; children: React.Reac
       animate={{ y: 0 }}
       exit={{ y: '100%' }}
       transition={{ type: 'spring', stiffness: 400, damping: 38 }}
-      className="fixed inset-x-0 bottom-0 z-[120] mx-auto max-h-[88dvh] w-full max-w-lg overflow-y-auto rounded-t-[2rem] border-t border-x border-white/10 bg-black px-5 pt-3"
+      className="fixed inset-x-0 bottom-0 z-[120] mx-auto max-h-[88dvh] w-full max-w-lg glass-sheet overflow-y-auto rounded-t-[2rem] border-t border-x px-5 pt-3"
       style={{ paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom) + 1.5rem))' }}
     >
       <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
@@ -514,6 +603,121 @@ const Sheet: React.FC<{ title: string; onClose: () => void; children: React.Reac
   </>
   );
 };
+
+const BudgetSheet: React.FC<{ current: number; currency: string; onClose: () => void }> = ({ current, currency, onClose }) => {
+  const save = useMutation(api.settings.setMonthlyBudget);
+  const [value, setValue] = useState(current > 0 ? String(current) : '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const amount = parseFloat(value);
+
+  const submit = async (next: number) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await save({ amount: next });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the budget.');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Sheet title="Monthly budget" onClose={onClose}>
+      <div className="space-y-5">
+        <p className="text-sm text-white/60">
+          One shared limit for what you two spend each month. The bar on this screen shows how much is left.
+        </p>
+        <div className="flex items-center gap-3">
+          <span className="w-16 shrink-0 text-center text-lg text-white/60">{currencySymbol(currency)}</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            autoFocus
+            placeholder="0"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            aria-label="Monthly budget amount"
+            className="nothing-input min-w-0 flex-1 font-mono text-2xl"
+          />
+        </div>
+        {error && <p className="text-xs text-red-300">{error}</p>}
+        <button
+          onClick={() => void submit(amount)}
+          disabled={saving || !Number.isFinite(amount) || amount <= 0}
+          className="h-12 w-full rounded-full bg-white font-semibold text-black disabled:opacity-40"
+        >
+          Save budget
+        </button>
+        {current > 0 && (
+          <button onClick={() => void submit(0)} disabled={saving} className="h-11 w-full text-sm text-white/50">
+            Remove budget
+          </button>
+        )}
+      </div>
+    </Sheet>
+  );
+};
+
+const RecurringSheet: React.FC<{
+  rules: NonNullable<ReturnType<typeof useRecurringRules>>;
+  partnerName: string;
+  onClose: () => void;
+}> = ({ rules, partnerName, onClose }) => {
+  const setActive = useMutation(api.recurring.setActive);
+  const remove = useMutation(api.recurring.remove);
+
+  return (
+    <Sheet title="Monthly expenses" onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-sm text-white/60">
+          These are added automatically on their day each month. To add one, tick "Repeat every month" when you add an expense.
+        </p>
+        {rules.length === 0 ? (
+          <p className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-sm text-white/50">
+            Nothing repeats yet. Rent, subscriptions and bills are good ones.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {rules.map((r) => (
+              <div key={r._id} className={`flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3.5 ${r.active ? '' : 'opacity-60'}`}>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {r.category} · {formatMoney(r.amount, r.currency)}
+                  </p>
+                  <p className="text-xs text-white/50">
+                    {ordinal(r.dayOfMonth)} of every month · {r.paidByMe ? 'you pay' : `${r.payerName || partnerName} pays`}
+                    {r.active ? '' : ' · paused'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => void setActive({ id: r._id as Id<'recurringExpenses'>, active: !r.active })}
+                  aria-label={r.active ? 'Pause' : 'Resume'}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10"
+                >
+                  {r.active ? <Pause size={15} /> : <Play size={15} />}
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`Stop repeating ${r.category}? Expenses already added stay.`)) void remove({ id: r._id as Id<'recurringExpenses'> });
+                  }}
+                  aria-label="Delete"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-coral"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Sheet>
+  );
+};
+function useRecurringRules() {
+  return useQuery(api.recurring.list);
+}
 
 const ExpenseDetailSheet: React.FC<{
   expense: Expense;
@@ -606,15 +810,21 @@ const ExpenseComposer: React.FC<{
 }> = ({ existing, defaultCurrency, partnerName, onClose }) => {
   const addExpense = useMutation(api.expenses.add);
   const updateExpense = useMutation(api.expenses.update);
+  const addRecurring = useMutation(api.recurring.add);
+  const [repeat, setRepeat] = useState(false);
 
   const [amount, setAmount] = useState(existing ? String(existing.amount) : '');
   const [category, setCategory] = useState(existing?.category ?? '');
   const [currency, setCurrency] = useState(existing?.currency ?? defaultCurrency);
   const [splitRatio, setSplitRatio] = useState(existing ? existing.splitRatio : 50);
   const [note, setNote] = useState(existing?.note ?? '');
-  const [date, setDate] = useState(
-    new Date(existing?.spentAt ?? Date.now()).toISOString().slice(0, 10),
-  );
+  // The user's local calendar day: toISOString() is UTC, which for anyone east
+  // of it shows yesterday's date for the first hours of the day.
+  const [date, setDate] = useState(() => {
+    const d = new Date(existing?.spentAt ?? Date.now());
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -640,6 +850,17 @@ const ExpenseComposer: React.FC<{
         await updateExpense({ id: existing._id as Id<'expenses'>, ...payload });
       } else {
         await addExpense(payload);
+        if (repeat) {
+          await addRecurring({
+            amount: payload.amount,
+            splitRatio: payload.splitRatio,
+            category: payload.category,
+            currency: payload.currency,
+            note: payload.note,
+            dayOfMonth: new Date(payload.spentAt).getDate(),
+            startsNextMonth: true,
+          });
+        }
       }
       onClose();
     } catch (err) {
@@ -768,6 +989,26 @@ const ExpenseComposer: React.FC<{
             />
           </div>
         </div>
+
+        {!existing && (
+          <label className="flex min-h-[52px] cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+            <input
+              type="checkbox"
+              checked={repeat}
+              onChange={(e) => setRepeat(e.target.checked)}
+              className="h-5 w-5 shrink-0 accent-[#c3a6ff]"
+            />
+            <span className="flex-1">
+              <span className="block text-sm">Repeat every month</span>
+              <span className="block text-xs text-white/50">
+                {repeat
+                  ? `Added automatically on the ${ordinal(Math.min(28, new Date(`${date}T12:00:00`).getDate()))} of each month, starting next month`
+                  : 'Rent, subscriptions, bills'}
+              </span>
+            </span>
+            <Repeat size={16} className="shrink-0 text-white/40" />
+          </label>
+        )}
 
         {error && (
           <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">

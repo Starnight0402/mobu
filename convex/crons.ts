@@ -11,4 +11,12 @@ crons.daily(
   internal.scheduled.dailyDigest,
 );
 
+// 18:35 UTC is 00:05 IST: just after midnight, so a rule due on the 1st is
+// there when you wake up.
+crons.daily(
+  "recurring expenses",
+  { hourUTC: 18, minuteUTC: 35 },
+  internal.recurring.runDue,
+);
+
 export default crons;

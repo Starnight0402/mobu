@@ -34,6 +34,7 @@ import type * as notify from "../notify.js";
 import type * as push from "../push.js";
 import type * as pushSubscriptions from "../pushSubscriptions.js";
 import type * as relationshipAnalyzer from "../relationshipAnalyzer.js";
+import type * as recurring from "../recurring.js";
 import type * as scheduled from "../scheduled.js";
 import type * as settings from "../settings.js";
 import type * as splitImport from "../splitImport.js";
@@ -73,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   notify: typeof notify;
   push: typeof push;
   pushSubscriptions: typeof pushSubscriptions;
+  recurring: typeof recurring;
   relationshipAnalyzer: typeof relationshipAnalyzer;
   scheduled: typeof scheduled;
   settings: typeof settings;

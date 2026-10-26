@@ -34,7 +34,10 @@ export const get = query({
     const partnerPhone = await getValue(ctx, "partnerPhone");
     // "Day one" of the relationship, YYYY-MM-DD; drives the Home counter.
     const startDate = await getValue(ctx, "startDate");
+    // Shared monthly spending limit, in the default currency; 0 means none.
+    const monthlyBudget = Number(await getValue(ctx, "monthlyBudget")) || 0;
     return {
+      monthlyBudget,
       startDate: startDate ?? "",
       currency: currency ?? "USD",
       timezone: timezone ?? "UTC",
@@ -63,6 +66,15 @@ export const save = mutation({
     if (args.partnerPhone !== undefined) {
       await setValue(ctx, "partnerPhone", args.partnerPhone.trim());
     }
+  },
+});
+
+export const setMonthlyBudget = mutation({
+  args: { amount: v.number() },
+  handler: async (ctx, args) => {
+    await requireUserId(ctx);
+    if (!(args.amount >= 0) || !Number.isFinite(args.amount)) throw new Error("Budget can't be negative");
+    await setValue(ctx, "monthlyBudget", String(args.amount));
   },
 });
 
