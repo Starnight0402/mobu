@@ -6,6 +6,7 @@ import { Id } from '../../convex/_generated/dataModel';
 import { useBackHandler } from '../lib/backButtonStack';
 import { CURRENCIES, currencySymbol, formatMoney } from '../lib/currency';
 import { SplitwiseImportModal } from './SplitwiseImportModal';
+import { AnalyticsView } from './SplitAnalytics';
 import { buildExpenseCsv, parseExpenseCsv } from '../lib/expenseCsv';
 import { saveTextFile } from '../lib/saveFile';
 import {
@@ -77,6 +78,7 @@ export const SplitView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [tab, setTab] = useState<'expenses' | 'analytics'>('expenses');
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
@@ -225,6 +227,36 @@ export const SplitView: React.FC = () => {
         </p>
       )}
 
+      <div role="tablist" aria-label="Split views" className="flex rounded-full border border-white/10 bg-surface p-1">
+        {(
+          [
+            { id: 'expenses', label: 'Expenses' },
+            { id: 'analytics', label: 'Analytics' },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={`h-10 flex-1 rounded-full text-sm transition-colors ${
+              tab === t.id ? 'bg-white font-semibold text-black' : 'text-white/60'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'analytics' ? (
+        <AnalyticsView
+          expenses={expenses}
+          partnerName={partnerName}
+          defaultCurrency={defaultCurrency}
+          categoryIcon={categoryIcon}
+        />
+      ) : (
+        <>
       <div className="relative">
         <Search size={15} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
         <input
@@ -403,6 +435,9 @@ export const SplitView: React.FC = () => {
             ))}
           </div>
         </section>
+      )}
+
+        </>
       )}
 
       <AnimatePresence>
