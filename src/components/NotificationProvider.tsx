@@ -220,7 +220,9 @@ export const NotificationProvider: React.FC<{
     const tab = new URLSearchParams(window.location.search).get('tab');
     if (tab) {
       onNavigate(tab);
-      window.history.replaceState({}, '', window.location.pathname);
+      // Drop ?tab=… but keep the #/tab onNavigate just set (and our history
+      // state), otherwise a refresh straight after lands on Home.
+      window.history.replaceState(window.history.state, '', window.location.pathname + window.location.hash);
     }
   }, [onNavigate]);
 

@@ -13,8 +13,9 @@
      Light mode swaps them below — a true theme, not a colour-invert filter. */
   --color-black: #110d13;
   --color-white: #f6efe9;
-  --color-surface: #1b161e;
-  --color-raised: #251f29;
+  /* Glass: translucent white over the ambient backdrop, blurred (see .glass). */
+  --color-surface: rgb(255 255 255 / 0.08);
+  --color-raised: rgb(255 255 255 / 0.14);
 
   --color-nothing-purple: #c3a6ff;
   --color-nothing-black: #110d13;
@@ -29,6 +30,15 @@
 /* Plain custom properties, not @theme: Tailwind only emits @theme variables it
    sees used in a class name, and these are read from JS style props. */
 :root {
+  --glass-border: rgb(255 255 255 / 0.16);
+  --glass-highlight: rgb(255 255 255 / 0.16);
+  --glass-shadow: 0 10px 34px rgb(0 0 0 / 0.32);
+  --glass-sheet: rgb(26 20 32 / 0.68);
+  --ambient:
+    radial-gradient(60% 42% at 12% 2%, rgb(195 166 255 / 0.30), transparent 62%),
+    radial-gradient(52% 40% at 100% 24%, rgb(255 143 126 / 0.22), transparent 62%),
+    radial-gradient(70% 46% at 24% 100%, rgb(158 217 182 / 0.14), transparent 64%),
+    radial-gradient(46% 34% at 92% 92%, rgb(195 166 255 / 0.16), transparent 62%);
   --bubble-sent: #6f5f8f;
   --bubble-sent-fg: #ffffff;
   --bubble-delivered: #c3a6ff;
@@ -52,7 +62,17 @@
   }
 
   body {
-    @apply bg-black text-white font-sans antialiased overflow-x-hidden;
+    @apply text-white font-sans antialiased overflow-x-hidden;
+    background: transparent;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: var(--ambient);
+    pointer-events: none;
   }
 
   /* Tells the browser to render native controls (select dropdowns,
@@ -77,10 +97,19 @@
 
   /* Light mode: the same variables, flipped. Photos and video are untouched. */
   html[data-theme='light'] {
+    --glass-border: rgb(255 255 255 / 0.85);
+    --glass-highlight: rgb(255 255 255 / 0.95);
+    --glass-shadow: 0 10px 34px rgb(86 52 130 / 0.14);
+    --glass-sheet: rgb(255 255 255 / 0.72);
+    --ambient:
+      radial-gradient(60% 42% at 12% 2%, rgb(160 124 240 / 0.34), transparent 62%),
+      radial-gradient(52% 40% at 100% 24%, rgb(255 150 130 / 0.30), transparent 62%),
+      radial-gradient(70% 46% at 24% 100%, rgb(120 210 160 / 0.22), transparent 64%),
+      radial-gradient(46% 34% at 92% 92%, rgb(160 124 240 / 0.22), transparent 62%);
     --color-black: #fbf6f1;
     --color-white: #1e1620;
-    --color-surface: #ffffff;
-    --color-raised: #f3ece6;
+    --color-surface: rgb(255 255 255 / 0.62);
+    --color-raised: rgb(255 255 255 / 0.86);
     --color-nothing-purple: #6a45c9;
     --color-nothing-black: #fbf6f1;
     --color-nothing-white: #1e1620;
@@ -143,13 +172,24 @@
 }
 
 @layer components {
-  /* One card style: a solid warm surface and a hairline. No blur, no glow. */
-  .glass {
-    @apply bg-surface border border-white/10 rounded-3xl;
+  /* Glassmorphism: translucent fill, heavy blur + saturation, a light edge and
+     an inner top highlight. Every surface in the app uses this recipe. */
+  .glass,
+  .glass-dark {
+    background: var(--color-surface);
+    border: 1px solid var(--glass-border);
+    border-radius: 1.5rem;
+    box-shadow: inset 0 1px 0 var(--glass-highlight), var(--glass-shadow);
+  }
+  .glass-dark {
+    background: color-mix(in oklab, var(--color-black) 30%, var(--color-surface));
   }
 
-  .glass-dark {
-    @apply bg-surface/90 border border-white/8 rounded-3xl;
+  /* Bottom sheets and dialogs: a denser pane so text stays readable. */
+  .glass-sheet {
+    background: var(--glass-sheet);
+    border-color: var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-highlight), 0 -12px 40px rgb(0 0 0 / 0.35);
   }
 
   .nothing-button {
@@ -174,6 +214,49 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+}
+
+/* The blur. Applied by attribute so Tailwind's bg-surface / bg-surface/90 and
+   the .glass classes all get it. Unlayered so it can't lose to a utility. */
+.glass,
+.glass-dark,
+.glass-sheet,
+[class*='bg-surface'],
+[class*='bg-raised'],
+.nothing-input {
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+}
+.glass-sheet {
+  -webkit-backdrop-filter: blur(34px) saturate(170%);
+  backdrop-filter: blur(34px) saturate(170%);
+}
+
+/* Users who ask for less transparency (or old WebViews without backdrop-filter)
+   get solid, readable surfaces instead. */
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .glass-dark,
+  .glass-sheet,
+  [class*='bg-surface'],
+  [class*='bg-raised'],
+  .nothing-input {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .glass,
+  .glass-dark {
+    background: color-mix(in oklab, var(--color-white) 12%, var(--color-black));
+  }
+  .glass-sheet {
+    background: color-mix(in oklab, var(--color-white) 8%, var(--color-black));
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .glass-dark {
+    background: color-mix(in oklab, var(--color-white) 12%, var(--color-black));
   }
 }
 

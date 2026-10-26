@@ -3,6 +3,7 @@ import { Authenticated, Unauthenticated, AuthLoading, useMutation, useQuery } fr
 import { Navigation } from './components/Navigation';
 import { PullToRefresh } from './components/PullToRefresh';
 import { useAndroidBackButton } from './lib/useAndroidBackButton';
+import { initialTab, onGoToTab, pushTab, rememberTab, tabFromHash } from './lib/navigation';
 import { Dashboard } from './components/Dashboard';
 import { TrackingForm } from './components/TrackingForm';
 import { MemoryBoard } from './components/MemoryBoard';
@@ -61,21 +62,18 @@ const VALID_TABS = new Set([
   'analyzer', 'fights', 'map', 'stats', 'split', 'logs', 'notifications', 'settings', 'mini',
 ]);
 
-function tabFromHash(): string {
-  const tab = window.location.hash.replace(/^#\/?/, '');
-  return VALID_TABS.has(tab) ? tab : 'home';
-}
-
 /**
- * The active tab lives in the URL hash so a refresh (or pull-to-refresh, or an
- * OTA reload) lands back on the same screen instead of Home, and the browser's
- * back button walks tab history.
+ * The active tab lives in the URL hash AND in storage, so a refresh, a
+ * pull-to-refresh, an OTA reload and even a cold start (the OS killed the app)
+ * all land back on the same screen instead of Home. Each change is a real
+ * history entry, so Back returns to the screen you came from (see
+ * lib/navigation.ts and lib/backButtonStack.ts).
  */
 function useHashTab(): [string, (tab: string) => void] {
-  const [activeTab, setTab] = useState(tabFromHash);
+  const [activeTab, setTab] = useState(() => initialTab(VALID_TABS));
 
   useEffect(() => {
-    const onPop = () => setTab(tabFromHash());
+    const onPop = () => setTab(tabFromHash(VALID_TABS) ?? 'home');
     window.addEventListener('popstate', onPop);
     window.addEventListener('hashchange', onPop);
     return () => {
@@ -84,11 +82,16 @@ function useHashTab(): [string, (tab: string) => void] {
     };
   }, []);
 
+  useEffect(() => rememberTab(activeTab), [activeTab]);
+
   const setActiveTab = useCallback((tab: string) => {
     const next = VALID_TABS.has(tab) ? tab : 'home';
     setTab(next);
-    if (tabFromHash() !== next) window.history.pushState(null, '', `#/${next}`);
+    if ((tabFromHash(VALID_TABS) ?? 'home') !== next) pushTab(next);
   }, []);
+
+  // Lets screens link elsewhere without owning navigation state.
+  useEffect(() => onGoToTab(setActiveTab), [setActiveTab]);
 
   return [activeTab, setActiveTab];
 }

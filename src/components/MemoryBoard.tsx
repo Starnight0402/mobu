@@ -8,6 +8,7 @@ import { reverseGeocode } from '../lib/geocode';
 import { SHADOW_MAP } from '../lib/memoryCardStyle';
 import { useLightbox } from './Lightbox';
 import { useBackHandler } from '../lib/backButtonStack';
+import { goToTab } from '../lib/navigation';
 import { LocationPickerModal } from './LocationPickerModal';
 import { MemoryComposer } from './MemoryComposer';
 import { MemorySphereView, MemorySphereHandle } from './MemorySphereView';
@@ -580,15 +581,16 @@ export const MemoryBoard: React.FC = () => {
             { id: 'map', label: 'Map' },
             { id: 'capsules', label: 'Capsules' },
           ] as const).map((t) => (
-            <a
+            <button
               key={t.id}
-              href={`#/${t.id}`}
+              type="button"
               role="tab"
               aria-selected={false}
+              onClick={() => goToTab(t.id)}
               className="flex h-9 shrink-0 items-center rounded-full px-4 text-[13px] text-white/60"
             >
               {t.label}
-            </a>
+            </button>
           ))}
         </div>
       </div>

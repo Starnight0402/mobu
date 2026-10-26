@@ -1,0 +1,15 @@
+<!doctype html><html lang="en" data-theme="dark"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="r"></div>
+<script type="module">
+import '../src/index.css';
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { Dashboard } from '../src/components/Dashboard';
+import { LightboxProvider } from '../src/components/Lightbox';
+import { Navigation } from '../src/components/Navigation';
+const q = new URLSearchParams(location.search);
+document.documentElement.setAttribute('data-theme', q.get('theme') || 'dark');
+const App = () => React.createElement(LightboxProvider, null,
+  React.createElement('div', { className: 'p-5' }, React.createElement(Dashboard, { onNavigate() {} })),
+  React.createElement(Navigation, { activeTab: 'home', setActiveTab() {} }));
+createRoot(document.getElementById('r')).render(React.createElement(App));
+</script></body></html>

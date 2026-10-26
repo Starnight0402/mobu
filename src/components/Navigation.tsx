@@ -151,7 +151,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
               onDragEnd={(_e, info) => {
                 if (info.offset.y > 80 || info.velocity.y > 500) setMoreOpen(false);
               }}
-              className="fixed bottom-0 left-0 right-0 z-[70] mx-auto w-full max-w-lg rounded-t-[2rem] border-t border-x border-white/10 bg-black px-5 pt-3"
+              className="fixed bottom-0 left-0 right-0 z-[70] mx-auto w-full max-w-lg glass-sheet rounded-t-[2rem] border-t border-x px-5 pt-3"
               style={{ paddingBottom: 'max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem))' }}
             >
               <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
@@ -216,7 +216,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
               transition={{ type: 'spring', stiffness: 400, damping: 38 }}
               role="dialog"
               aria-label="Add something"
-              className="fixed bottom-0 left-0 right-0 z-[70] mx-auto w-full max-w-lg rounded-t-[2rem] border-t border-x border-white/10 bg-black px-5 pt-3"
+              className="fixed bottom-0 left-0 right-0 z-[70] mx-auto w-full max-w-lg glass-sheet rounded-t-[2rem] border-t border-x px-5 pt-3"
               style={{ paddingBottom: 'max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem))' }}
             >
               <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />

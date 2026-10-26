@@ -8,7 +8,7 @@ import { Avatar } from './Avatar';
 import { useNotifications } from './NotificationProvider';
 import { currencySymbol } from '../lib/currency';
 import { haptic } from '../lib/haptics';
-import { Bell, Phone, MessageCircle, Lock, Wallet, Flame, ChevronRight, Sparkles, Check } from 'lucide-react';
+import { Image as ImageIcon, Bell, Phone, MessageCircle, Lock, Wallet, Flame, ChevronRight, Sparkles, Check } from 'lucide-react';
 
 interface DashboardProps {
   /** Lets cards act as entry points into their full screens. */
@@ -203,8 +203,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             aria-label={`View ${feature.title}`}
           >
             <img src={feature.imageUrl} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-            <span className="absolute inset-x-0 bottom-0 bg-black/75 p-4">
-              <span className="block text-xs uppercase tracking-[0.08em] text-coral">
+            <span className="absolute inset-x-2 bottom-2 rounded-2xl border border-white/25 bg-black/25 p-3.5 shadow-lg backdrop-blur-xl backdrop-saturate-150">
+              <span className="block text-xs uppercase tracking-[0.08em] text-white/80">
                 {featureIsOnThisDay
                   ? `${featureYears} year${featureYears === 1 ? '' : 's'} ago`
                   : new Date(feature.memoryDate ?? feature._creationTime).toLocaleDateString(undefined, {
@@ -213,9 +213,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                       year: 'numeric',
                     })}
               </span>
-              <span className="mt-0.5 block font-display text-lg">{feature.title}</span>
+              <span className="mt-0.5 block font-display text-lg text-white">{feature.title}</span>
             </span>
           </button>
+        </section>
+      )}
+
+      {photos.length > 1 && (
+        <section className="glass p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 font-display text-lg font-medium">
+              <ImageIcon size={17} className="text-nothing-purple" /> Memories
+            </h2>
+            <span className="text-xs text-white/60">{memories.length} total</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {photos.slice(0, 3).map((photo, i) => (
+              <button
+                key={photo.src}
+                type="button"
+                onClick={() => openGallery(photos, i)}
+                aria-label={`View ${photo.alt}`}
+                className="relative aspect-square overflow-hidden rounded-2xl border border-white/20 shadow-md"
+              >
+                <img src={photo.src} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                <span className="absolute inset-x-1 bottom-1 truncate rounded-lg bg-black/30 px-2 py-1 text-[11px] text-white backdrop-blur-md">
+                  {photo.alt}
+                </span>
+              </button>
+            ))}
+          </div>
         </section>
       )}
 

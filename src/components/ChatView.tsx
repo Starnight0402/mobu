@@ -6,6 +6,7 @@ import { Id } from '../../convex/_generated/dataModel';
 import { compressImage, UnreadableImageError } from '../lib/image';
 import { useLightbox } from './Lightbox';
 import { haptic } from '../lib/haptics';
+import { goToTab } from '../lib/navigation';
 import { Avatar, CoupleAvatars } from './Avatar';
 import { Send, Image as ImageIcon, Mic, Square, Loader2, Play, Pause, Check, CheckCheck, Phone } from 'lucide-react';
 
@@ -161,13 +162,14 @@ export const ChatView: React.FC = () => {
           <p className="text-white/50 text-xs">Just the two of you</p>
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href="#/call"
+          <button
+            type="button"
+            onClick={() => goToTab('call')}
             aria-label="Call"
             className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-surface text-white"
           >
             <Phone size={18} />
-          </a>
+          </button>
           <CoupleAvatars size={30} />
         </div>
       </header>
