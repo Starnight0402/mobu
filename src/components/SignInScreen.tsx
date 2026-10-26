@@ -171,13 +171,15 @@ export const SignInScreen: React.FC = () => {
         className="w-full max-w-sm space-y-8"
       >
         <div className="text-center space-y-2">
-          <motion.div
+          <motion.img
+            src="/brand/mobu-app-icon-rounded.svg"
+            alt=""
+            width={88}
+            height={88}
             animate={{ scale: [0.9, 1] }}
             transition={{ duration: 0.4, ease: 'easeOut' }}
-            className="w-14 h-14 rounded-2xl bg-nothing-purple/10 border border-nothing-purple/20 flex items-center justify-center mx-auto mb-2"
-          >
-            <Lock className="text-nothing-purple" size={24} />
-          </motion.div>
+            className="mx-auto mb-2 h-[88px] w-[88px] drop-shadow-xl"
+          />
           <h1 className="text-3xl font-display font-medium tracking-tight dot-matrix">Mobu</h1>
           <AnimatePresence mode="wait">
             <motion.p

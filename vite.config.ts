@@ -30,7 +30,7 @@ export default defineConfig(({mode}) => {
           globIgnores: ['mini/**', '**/heic2any-*.js'],
         },
         registerType: 'autoUpdate',
-        includeAssets: ['icons/apple-touch-icon.png'],
+        includeAssets: ['icons/apple-touch-icon.png', 'favicon.svg', 'favicon.png'],
         manifest: {
           id: base,
           name: 'Mobu — Our Life Together',

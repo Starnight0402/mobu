@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="Mobu app icon">
+<title>Mobu app icon</title>
+<defs>
+<linearGradient id="rSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D6C2FF"/><stop offset="1" stop-color="#B796F7"/></linearGradient>
+<linearGradient id="rSea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFA494"/><stop offset="1" stop-color="#EC6654"/></linearGradient>
+<linearGradient id="rFold" x1="0.2" y1="0.2" x2="1" y2="1"><stop offset="0" stop-color="#F6CFC4"/><stop offset="1" stop-color="#FFF1EB"/></linearGradient>
+<filter id="rShadow" x="-25%" y="-25%" width="150%" height="160%"><feDropShadow dx="0" dy="9" stdDeviation="9" flood-color="#000000" flood-opacity="0.5"/></filter>
+<filter id="rSoft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.5"/></filter>
+<clipPath id="rNote"><path d="M54 40H186A14 14 0 0 1 200 54V140L140 200H54A14 14 0 0 1 40 186V54A14 14 0 0 1 54 40Z"/></clipPath>
+</defs><rect width="240" height="240" rx="55" fill="#251F29"/><g transform="translate(12 12) scale(0.9)"><path d="M54 40H186A14 14 0 0 1 200 54V140L140 200H54A14 14 0 0 1 40 186V54A14 14 0 0 1 54 40Z" fill="#C3A6FF"/>
+<g clip-path="url(#rNote)">
+<rect x="40" y="40" width="160" height="160" fill="url(#rSky)"/>
+<path d="M40 138L70 112L86 122L114 92L140 120L156 108L200 140V200H40Z" fill="#9F7BEA"/>
+<path d="M81.69 55.99A22 22 0 1 0 102.83 85.09A18 18 0 0 1 81.69 55.99Z" fill="#F2C879"/>
+<path d="M30 142C44 132 58 132 72 142S100 152 114 142S142 132 156 142S184 152 198 142S226 132 240 142V220H30Z" fill="url(#rSea)"/>
+<path d="M30 142C44 132 58 132 72 142S100 152 114 142S142 132 156 142S184 152 198 142S226 132 240 142" fill="none" stroke="#FBF7F2" stroke-width="5" stroke-linecap="round"/>
+</g>
+<path d="M200 140L140 200Q150 150 200 140Z" fill="url(#rFold)"/></g>
+</svg>
