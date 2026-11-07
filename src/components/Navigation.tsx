@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Home,
   Plus,
@@ -23,7 +23,7 @@ import {
   Smile,
   LucideIcon,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 import { useNotifications } from './NotificationProvider';
 import { haptic } from '../lib/haptics';
 import { useBackHandler } from '../lib/backButtonStack';
@@ -94,6 +94,204 @@ const ADD_ACTIONS: { id: string; label: string; hint: string; icon: LucideIcon; 
   { id: 'capsule', label: 'Time capsule', hint: 'A note for later', icon: Lock, tab: 'capsules' },
 ];
 
+/* ---------------------------------------------------------------------------
+ * The dock's active-tab glow: "Hop".
+ *
+ * Switching tabs, the glow shrinks into a dot, jumps over the + in an arc and
+ * lands on the new tab with a little spring. When it crosses the + (Memories
+ * to Chat, say), the + ducks under it and the phone gives a short tick.
+ * Neighbouring tabs get a smaller hop.
+ *
+ * It's one element measured inside the dock rather than a shared-layout
+ * (layoutId) animation: the dock is position: fixed, and the page scrolling
+ * to the top on a tab change leaked into the shared-layout measurement, so
+ * the glow used to drop in from the top of the screen.
+ * ------------------------------------------------------------------------- */
+
+type DockKey = 'home' | 'memories' | 'chat' | 'us';
+// Position in the bar; the + sits at 2.
+const DOCK_INDEX: Record<DockKey, number> = { home: 0, memories: 1, chat: 3, us: 4 };
+const PLUS_INDEX = 2;
+const HOP_MS_CROSSING = 880;
+const HOP_MS_NEIGHBOUR = 660;
+// When, through the hop, the dot is over the +.
+const PASS_AT = 0.48;
+
+type Rect = { x: number; y: number; w: number; h: number; r?: number };
+
+/** A damped spring as a CSS linear() easing, for the landing. */
+function springEasing(stiffness: number, damping: number, fallback: string) {
+  if (typeof CSS === 'undefined' || !CSS.supports('animation-timing-function', 'linear(0, 0.5, 1)')) {
+    return fallback;
+  }
+  let x = 0;
+  let v = 0;
+  let t = 0;
+  const dt = 1 / 240;
+  const xs: number[] = [];
+  while (t < 2.5) {
+    v += (-stiffness * (x - 1) - damping * v) * dt;
+    x += v * dt;
+    t += dt;
+    xs.push(x);
+    if (t > 0.1 && Math.abs(x - 1) < 0.001 && Math.abs(v) < 0.02) break;
+  }
+  const step = Math.max(1, Math.floor(xs.length / 60));
+  const pts = ['0'];
+  for (let i = step; i < xs.length - 1; i += step) pts.push(xs[i].toFixed(4));
+  pts.push('1');
+  return `linear(${pts.join(', ')})`;
+}
+const LANDING = springEasing(380, 20, 'cubic-bezier(.2,1.45,.4,1)');
+
+const toFrame = (r: Rect, extra: Keyframe = {}): Keyframe => ({
+  left: `${r.x}px`,
+  top: `${r.y}px`,
+  width: `${r.w}px`,
+  height: `${r.h}px`,
+  borderRadius: `${r.r ?? 16}px`,
+  ...extra,
+});
+const centerOf = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+const dotAt = (cx: number, cy: number, s: number): Rect => ({ x: cx - s / 2, y: cy - s / 2, w: s, h: s, r: s / 2 });
+
+function rectIn(el: HTMLElement, dock: HTMLElement): Rect {
+  const a = el.getBoundingClientRect();
+  const d = dock.getBoundingClientRect();
+  return { x: a.left - d.left - dock.clientLeft, y: a.top - d.top - dock.clientTop, w: a.width, h: a.height };
+}
+
+function hopFrames(from: Rect, to: Rect, plus: Rect, crossing: boolean, pill: string, accent: string): Keyframe[] {
+  const size = 12;
+  const f = centerOf(from);
+  const t = centerOf(to);
+  // Over the + when crossing it; a small hop between neighbours.
+  const peak = crossing ? plus.y - 16 : Math.min(f.y, t.y) - 22;
+  const frames: Keyframe[] = [
+    toFrame(from, { offset: 0, backgroundColor: pill, easing: 'cubic-bezier(.5,0,.8,.3)' }),
+    toFrame(dotAt(f.x, f.y, size), { offset: 0.18, backgroundColor: accent }),
+  ];
+  // Constant sideways speed with a parabola for height reads as a real jump.
+  const steps = 14;
+  for (let i = 1; i < steps; i++) {
+    const u = i / steps;
+    const x = f.x + (t.x - f.x) * u;
+    const y = f.y + (t.y - f.y) * u - (f.y - peak) * 4 * u * (1 - u);
+    frames.push(toFrame(dotAt(x, y, size), { offset: 0.18 + 0.6 * u, backgroundColor: accent }));
+  }
+  frames.push(toFrame(dotAt(t.x, t.y, size), { offset: 0.78, backgroundColor: accent, easing: LANDING }));
+  frames.push(toFrame(to, { offset: 1, backgroundColor: pill }));
+  return frames;
+}
+
+function useHopIndicator(activeKey: DockKey | null) {
+  const dockRef = useRef<HTMLDivElement>(null);
+  const indRef = useRef<HTMLDivElement>(null);
+  const plusRef = useRef<HTMLButtonElement>(null);
+  const tabRefs = useRef<Partial<Record<DockKey, HTMLElement | null>>>({});
+  const shownKey = useRef<DockKey | null>(null);
+  const running = useRef<{ ind?: Animation; plus?: Animation; tick?: number }>({});
+
+  const stop = () => {
+    running.current.ind?.cancel();
+    running.current.plus?.cancel();
+    window.clearTimeout(running.current.tick);
+    running.current = {};
+  };
+
+  const place = (ind: HTMLElement, r: Rect) => {
+    Object.assign(ind.style, {
+      left: `${r.x}px`,
+      top: `${r.y}px`,
+      width: `${r.w}px`,
+      height: `${r.h}px`,
+      borderRadius: '16px',
+    });
+  };
+
+  useLayoutEffect(() => {
+    const dock = dockRef.current;
+    const ind = indRef.current;
+    if (!dock || !ind) return;
+    const fromKey = shownKey.current;
+    shownKey.current = activeKey;
+
+    // Start from wherever the glow is right now, so a quick second tap
+    // redirects it mid-air instead of snapping back first.
+    const midAir = running.current.ind?.playState === 'running';
+    const fromEl = fromKey ? tabRefs.current[fromKey] : null;
+    let from: Rect | null = null;
+    if (midAir) {
+      const cs = getComputedStyle(ind);
+      from = { x: parseFloat(cs.left), y: parseFloat(cs.top), w: parseFloat(cs.width), h: parseFloat(cs.height), r: parseFloat(cs.borderTopLeftRadius) || 16 };
+    } else if (fromEl) {
+      from = rectIn(fromEl, dock);
+    }
+    stop();
+
+    const toEl = activeKey ? tabRefs.current[activeKey] : null;
+    if (!toEl) {
+      // A screen the bar doesn't show (the tracking form): no glow.
+      ind.style.opacity = '0';
+      return;
+    }
+    const to = rectIn(toEl, dock);
+    place(ind, to);
+    ind.style.opacity = '1';
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!from || !fromKey || !activeKey || fromKey === activeKey || reduced) return;
+
+    const crossing = Math.sign(DOCK_INDEX[fromKey] - PLUS_INDEX) !== Math.sign(DOCK_INDEX[activeKey] - PLUS_INDEX);
+    const plusEl = plusRef.current;
+    const plus = plusEl ? rectIn(plusEl, dock) : { x: 0, y: 0, w: 0, h: 0 };
+    const pill = getComputedStyle(ind).backgroundColor;
+    const accent =
+      getComputedStyle(document.documentElement).getPropertyValue('--color-nothing-purple').trim() || '#c3a6ff';
+    const duration = crossing ? HOP_MS_CROSSING : HOP_MS_NEIGHBOUR;
+
+    const anim = ind.animate(hopFrames(from, to, plus, crossing, pill, accent), { duration, fill: 'backwards' });
+    running.current.ind = anim;
+    anim.onfinish = () => {
+      if (running.current.ind === anim) running.current = {};
+    };
+
+    if (crossing && plusEl) {
+      // The + ducks as the dot sails over it, and the phone ticks right then.
+      running.current.plus = plusEl.animate(
+        [
+          { transform: 'scale(1)', offset: 0 },
+          { transform: 'scale(1)', offset: PASS_AT - 0.1 },
+          { transform: 'scale(0.9)', offset: PASS_AT },
+          { transform: 'scale(1.05)', offset: PASS_AT + 0.14 },
+          { transform: 'scale(1)', offset: 1 },
+        ],
+        { duration },
+      );
+      running.current.tick = window.setTimeout(() => haptic('tap'), duration * PASS_AT);
+    }
+  }, [activeKey]);
+
+  // Keep it on its tab when the dock resizes (rotation, font load).
+  useEffect(() => {
+    const dock = dockRef.current;
+    if (!dock || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      const ind = indRef.current;
+      const key = shownKey.current;
+      const el = key ? tabRefs.current[key] : null;
+      if (!ind || !el || running.current.ind) return;
+      place(ind, rectIn(el, dock));
+    });
+    ro.observe(dock);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => () => stop(), []);
+
+  return { dockRef, indRef, plusRef, tabRefs };
+}
+
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
   const [moreOpen, setMoreOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -103,6 +301,15 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
   useBackHandler(addOpen, () => setAddOpen(false));
 
   const moreIsActive = MORE_TABS.some((t) => t.id === activeTab);
+  const isPrimary = PRIMARY_TABS.some((t) => t.id === activeTab);
+  const glowKey: DockKey | null = moreOpen
+    ? 'us'
+    : isPrimary
+      ? (activeTab as DockKey)
+      : moreIsActive
+        ? 'us'
+        : null;
+  const { dockRef, indRef, plusRef, tabRefs } = useHopIndicator(glowKey);
 
   // Anything the bar doesn't badge directly rolls up onto the More button, so
   // no notification is invisible just because its screen is behind the sheet.
@@ -241,18 +448,25 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
         className="fixed left-0 right-0 z-50 px-3"
         style={{ bottom: 'max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem))' }}
       >
-        <div className="glass mx-auto flex max-w-md items-stretch justify-around gap-1 p-1.5 shadow-2xl">
+        <div
+          ref={dockRef}
+          className="glass relative mx-auto flex max-w-md items-stretch justify-around gap-1 p-1.5 shadow-2xl"
+        >
+          {/* The hopping glow (useHopIndicator). Behind the tabs and the +. */}
+          <div ref={indRef} aria-hidden="true" className="pointer-events-none absolute left-0 top-0 rounded-2xl bg-white/10" />
           {LEFT_TABS.map((tab) => (
             <NavButton
               key={tab.id}
               tab={tab}
-              isActive={activeTab === tab.id}
+              isActive={glowKey === tab.id}
               count={unreadByTab[tab.id] ?? 0}
               onClick={() => go(tab.id)}
+              innerRef={(el) => { tabRefs.current[tab.id as DockKey] = el; }}
             />
           ))}
-          <div className="flex min-w-[64px] flex-1 items-center justify-center">
+          <div className="relative z-10 flex min-w-[64px] flex-1 items-center justify-center">
             <button
+              ref={plusRef}
               onClick={() => {
                 haptic('select');
                 setMoreOpen(false);
@@ -269,14 +483,16 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
             <NavButton
               key={tab.id}
               tab={tab}
-              isActive={activeTab === tab.id}
+              isActive={glowKey === tab.id}
               count={unreadByTab[tab.id] ?? 0}
               onClick={() => go(tab.id)}
+              innerRef={(el) => { tabRefs.current[tab.id as DockKey] = el; }}
             />
           ))}
           <NavButton
             tab={{ id: 'us', icon: Heart, label: 'Us' }}
-            isActive={moreIsActive || moreOpen}
+            isActive={glowKey === 'us'}
+            innerRef={(el) => { tabRefs.current.us = el; }}
             count={moreUnread}
             onClick={() => {
               haptic('select');
@@ -303,10 +519,12 @@ const NavButton: React.FC<{
   isActive: boolean;
   count: number;
   onClick: () => void;
-}> = ({ tab, isActive, count, onClick }) => {
+  innerRef?: (el: HTMLButtonElement | null) => void;
+}> = ({ tab, isActive, count, onClick, innerRef }) => {
   const Icon = tab.icon;
   return (
     <button
+      ref={innerRef}
       onClick={onClick}
       aria-current={isActive ? 'page' : undefined}
       aria-label={count > 0 ? `${tab.label}, ${count} unread` : tab.label}
@@ -315,13 +533,6 @@ const NavButton: React.FC<{
         isActive ? 'text-white' : 'text-white/40'
       }`}
     >
-      {isActive && (
-        <motion.div
-          layoutId="nav-glow"
-          className="absolute inset-0 rounded-2xl bg-white/10"
-          transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
-        />
-      )}
       {count > 0 && <Badge count={count} className="right-2 top-1" />}
       <Icon size={19} className="relative" />
       <span className="relative text-[10px] leading-none tracking-wide">{tab.label}</span>
