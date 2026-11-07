@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Navigation, LocateFixed, MapPin, KeyRound, Share2, Square, Heart, X } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { Memory } from '../types';
+import { useBackHandler } from '../lib/backButtonStack';
 
 // A standard dark map theme (in the spirit of Snazzy Maps' "Midnight
 // Commander" family) so Google's tiles match the app's black/purple palette
@@ -116,6 +117,7 @@ export const MapView: React.FC = () => {
     [memories],
   );
   const [panelOpen, setPanelOpen] = useState(false);
+  useBackHandler(panelOpen, () => setPanelOpen(false));
 
   return (
     // Fixed, not part of the normal padded/scrolling page flow — a "full

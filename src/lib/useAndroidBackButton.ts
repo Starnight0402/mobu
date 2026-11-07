@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { hasOpenOverlay } from './backButtonStack';
+import { hasOpenOverlay, isBackBlocked } from './backButtonStack';
 import { goBack } from './navigation';
 
 /**
@@ -9,22 +9,25 @@ import { goBack } from './navigation';
  * is a single-page SPA, so Capacitor's default "go back in WebView history,
  * else exit" has nothing sensible to do.
  *
- * Back now means: close the open modal/sheet if there is one, otherwise return
- * to the screen you came from (every screen change is a history entry, see
- * navigation.ts), and only when there's nowhere left to go minimise rather
- * than hard-exit, which is how Android apps are expected to behave.
+ * Back now means: nothing during a call (it has its own Hang up / Decline),
+ * else close the open modal/sheet if there is one, else return to the screen
+ * you came from (every screen change is a history entry, see navigation.ts),
+ * and on Home minimise rather than hard-exit, which is how Android apps are
+ * expected to behave.
  *
- * `onNavigateHome` should navigate to Home and return true, or return false if
- * already there.
+ * `onHome` says whether Home is showing; `goHome` must move there without
+ * adding a history entry.
  */
-export function useAndroidBackButton(onNavigateHome: () => boolean) {
-  const onNavigateHomeRef = useRef(onNavigateHome);
-  onNavigateHomeRef.current = onNavigateHome;
+export function useAndroidBackButton(onHome: boolean, goHome: () => void) {
+  const stateRef = useRef({ onHome, goHome });
+  stateRef.current = { onHome, goHome };
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const handle = App.addListener('backButton', () => {
-      if (goBack(hasOpenOverlay(), () => onNavigateHomeRef.current())) return;
+      if (isBackBlocked()) return;
+      const { onHome: home, goHome: toHome } = stateRef.current;
+      if (goBack(hasOpenOverlay(), home, toHome)) return;
       void App.minimizeApp();
     });
     return () => {

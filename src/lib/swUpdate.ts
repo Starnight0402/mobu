@@ -10,6 +10,23 @@
  * memory being set up. So it waits until the user isn't in a text field or a
  * call, or until the app is backgrounded (when a reload is invisible).
  */
+/**
+ * Asks the server whether a newer deploy exists. 'unknown' when there's no
+ * service worker to ask, or it didn't answer in time.
+ */
+export async function checkForUpdate(timeoutMs = 4000): Promise<'new' | 'current' | 'unknown'> {
+  if (!('serviceWorker' in navigator)) return 'unknown';
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return 'unknown';
+    const timedOut = new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), timeoutMs));
+    if ((await Promise.race([reg.update().then(() => 'done' as const), timedOut])) === 'timeout') return 'unknown';
+    return reg.installing || reg.waiting ? 'new' : 'current';
+  } catch {
+    return 'unknown';
+  }
+}
+
 export function reloadOnNewServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
 

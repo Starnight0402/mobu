@@ -5,6 +5,7 @@ import { Swords, Plus, X, Check, Trash2, User } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
 import { useBackHandler } from '../lib/backButtonStack';
+import { confirmDialog } from './Dialog';
 
 const SEVERITY_LABELS = ['Minor tiff', 'Small spat', 'Real argument', 'Big fight', 'Major blowup'];
 
@@ -43,7 +44,9 @@ export const FightLogView: React.FC = () => {
   };
 
   const deleteFight = async (id: Id<'fights'>) => {
-    if (confirm('Delete this log entry?')) await removeFight({ id });
+    if (await confirmDialog({ title: 'Delete this log entry?', body: "This can't be undone.", confirmLabel: 'Delete', danger: true })) {
+      await removeFight({ id });
+    }
   };
 
   const nameFor = (id?: Id<'users'>) => {

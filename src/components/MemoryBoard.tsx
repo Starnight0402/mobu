@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
@@ -8,7 +8,8 @@ import { reverseGeocode } from '../lib/geocode';
 import { SHADOW_MAP } from '../lib/memoryCardStyle';
 import { useLightbox } from './Lightbox';
 import { useBackHandler } from '../lib/backButtonStack';
-import { goToTab } from '../lib/navigation';
+import { confirmDialog, noticeDialog } from './Dialog';
+import { goToTab, OPEN_COMPOSER_EVENT } from '../lib/navigation';
 import { LocationPickerModal } from './LocationPickerModal';
 import { MemoryComposer } from './MemoryComposer';
 import { MemorySphereView, MemorySphereHandle } from './MemorySphereView';
@@ -96,6 +97,12 @@ export const MemoryBoard: React.FC = () => {
       return false;
     }
   });
+  // Add → Memory while already on this screen.
+  useEffect(() => {
+    const open = () => setComposerOpen(true);
+    window.addEventListener(OPEN_COMPOSER_EVENT, open);
+    return () => window.removeEventListener(OPEN_COMPOSER_EVENT, open);
+  }, []);
   // Held by id and resolved against the live query, so the detail view always
   // shows what's actually saved (a snapshot went stale after every edit and
   // lost its image URL).
@@ -237,13 +244,13 @@ export const MemoryBoard: React.FC = () => {
 
   const deleteMemory = async () => {
     if (!selectedMemory) return;
-    if (confirm('Are you sure you want to delete this memory?')) {
+    if (await confirmDialog({ title: 'Delete this memory?', body: "Its photo goes too. This can't be undone.", confirmLabel: 'Delete', danger: true })) {
       try {
         await removeMemory({ id: selectedMemory._id });
         closeModal();
       } catch (err) {
         console.error('Delete failed', err);
-        alert("Couldn't delete that memory — try again.");
+        void noticeDialog("Couldn't delete that memory", 'Check your connection and try again.');
       }
     }
   };

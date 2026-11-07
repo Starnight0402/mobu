@@ -5,6 +5,7 @@ import { useCall } from './CallProvider';
 import { haptic, startRepeatingHaptic } from '../lib/haptics';
 import { startRingtone } from '../lib/ringtone';
 import { Avatar } from './Avatar';
+import { useBackBlocker } from '../lib/backButtonStack';
 
 /**
  * Attaches a MediaStream once the element actually exists.
@@ -83,6 +84,9 @@ export const CallOverlay: React.FC = () => {
   } = useCall();
 
   const elapsed = useElapsed(phase === 'active');
+  // Hang up is the way out; Back shouldn't navigate the screens hidden under
+  // the call or minimise the app mid-call.
+  useBackBlocker(true);
 
   const statusLine =
     phase === 'outgoing'
@@ -225,6 +229,7 @@ const ControlButton: React.FC<{
  */
 export const IncomingCallSheet: React.FC = () => {
   const { peerName, peerAvatarUrl, accept, decline } = useCall();
+  useBackBlocker(true);
 
   // Ring and buzz until it's answered or declined — a silent visual is easy to
   // miss on a phone that's face-down in a pocket.

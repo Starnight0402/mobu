@@ -11,6 +11,8 @@
  *   same Back gesture closes them before it leaves the screen.
  */
 
+import { forgetOverlayEntries, onOverlayEntry } from './backButtonStack';
+
 const LAST_TAB_KEY = 'mobu-last-tab';
 /** A relaunch after this long opens Home rather than where you left off. */
 const RESTORE_WINDOW_MS = 12 * 60 * 60 * 1000;
@@ -71,20 +73,111 @@ export function initialTab(valid: Set<string>): string {
   return 'home';
 }
 
+// Scroll positions by history position, so Back lands where you left a screen
+// rather than at the top. In memory only: after a reload, screens open at the top.
+const scrollByIdx = new Map<number, number>();
+let restoreTarget: number | null = null;
+if (typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
+  // We restore it ourselves, once the screen has rendered its content.
+  window.history.scrollRestoration = 'manual';
+}
+
+/** Called when Back/Forward lands on another screen: aim for where it was left. */
+export function markHistoryLanding(): void {
+  restoreTarget = scrollByIdx.get(historyIndex()) ?? 0;
+}
+
+/** Where the screen that's now showing should be scrolled to (0 for a fresh one). */
+export function takeRestoreTarget(): number {
+  const y = restoreTarget ?? 0;
+  restoreTarget = null;
+  return y;
+}
+
+/**
+ * Scrolls to `y`, retrying for a moment: a screen's data arrives after it
+ * mounts, so the page can be too short to reach `y` on the first frame. Any
+ * touch or wheel from the user stops it, so it never fights a real scroll.
+ */
+export function restoreScroll(y: number): void {
+  if (y <= 0) {
+    window.scrollTo(0, 0);
+    return;
+  }
+  let cancelled = false;
+  const cancel = () => {
+    cancelled = true;
+  };
+  window.addEventListener('touchstart', cancel, { once: true, passive: true });
+  window.addEventListener('wheel', cancel, { once: true, passive: true });
+  const until = performance.now() + 1500;
+  const step = () => {
+    if (cancelled) return;
+    window.scrollTo(0, y);
+    if (Math.abs(window.scrollY - y) > 2 && performance.now() < until) {
+      requestAnimationFrame(step);
+    } else {
+      window.removeEventListener('touchstart', cancel);
+      window.removeEventListener('wheel', cancel);
+    }
+  };
+  step();
+}
+
 /**
  * Moves to a screen as a new history entry.
  *
  * If a modal/sheet is open (you tapped a tab inside it), its own history entry
  * is replaced rather than stacked on: the modal is about to close, and a
- * leftover entry would cost a dead Back press.
+ * leftover entry would cost a dead Back press. Any other overlay entries still
+ * under it are marked stale, so Back skips them.
  */
 export function pushTab(tab: string): void {
+  scrollByIdx.set(historyIndex(), window.scrollY);
   const state = { mobuIdx: historyIndex() + 1 };
-  if (navState().mobuOverlay != null) {
+  scrollByIdx.delete(state.mobuIdx);
+  if (onOverlayEntry()) {
+    forgetOverlayEntries();
     window.history.replaceState(state, '', `#/${tab}`);
   } else {
     window.history.pushState(state, '', `#/${tab}`);
   }
+}
+
+/**
+ * Moves to a screen in place of the current history entry, for moves that
+ * shouldn't be "Back-able": after saving a form (Back would reopen the empty
+ * form) or Back's own jump to Home (a push there made Back bounce between Home
+ * and the restored screen forever).
+ */
+export function replaceTab(tab: string): void {
+  scrollByIdx.delete(historyIndex());
+  if (onOverlayEntry()) forgetOverlayEntries();
+  window.history.replaceState({ mobuIdx: historyIndex() }, '', `#/${tab}`);
+}
+
+/** Asks an already-open Memories screen to open its composer (Add → Memory). */
+export const OPEN_COMPOSER_EVENT = 'mobu-open-composer';
+
+const RETAP_EVENT = 'mobu-tab-retap';
+
+/**
+ * Tapping the bar button of the screen you're already on. A screen can claim
+ * it (Chat jumps to the newest message); otherwise the caller scrolls to the
+ * top. Returns true if a screen handled it.
+ */
+export function retapTab(tab: string): boolean {
+  return !window.dispatchEvent(new CustomEvent<string>(RETAP_EVENT, { detail: tab, cancelable: true }));
+}
+
+export function onRetapTab(tab: string, handler: () => void): () => void {
+  const listener = (e: Event) => {
+    if ((e as CustomEvent<string>).detail !== tab) return;
+    e.preventDefault();
+    handler();
+  };
+  window.addEventListener(RETAP_EVENT, listener);
+  return () => window.removeEventListener(RETAP_EVENT, listener);
 }
 
 const NAVIGATE_EVENT = 'mobu-navigate';
@@ -102,14 +195,24 @@ export function onGoToTab(listener: (tab: string) => void): () => void {
 
 /**
  * Android's Back button. Returns false when there is nothing left to go back
- * to (already on Home), so the caller can minimise instead of exiting.
+ * to, so the caller can minimise instead of exiting.
+ *
+ * Home is the start screen: Back there leaves the app, as on any Android app
+ * with a bottom bar, instead of replaying every screen you've visited since
+ * launch (Home → Chat → Home → Back used to land on Chat).
  */
-export function goBack(hasOpenOverlay: boolean, goHome: () => boolean): boolean {
+export function goBack(hasOpenOverlay: boolean, onHome: boolean, goHome: () => void): boolean {
   // An open modal/sheet owns a history entry; popping it closes it.
-  if (hasOpenOverlay || historyIndex() > 0) {
+  if (hasOpenOverlay) {
+    window.history.back();
+    return true;
+  }
+  if (onHome) return false;
+  if (historyIndex() > 0) {
     window.history.back();
     return true;
   }
   // First screen of this launch but not Home (a restored screen): Home is "back".
-  return goHome();
+  goHome();
+  return true;
 }

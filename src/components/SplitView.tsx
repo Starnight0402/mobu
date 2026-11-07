@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
 import { useBackHandler } from '../lib/backButtonStack';
+import { confirmDialog } from './Dialog';
 import { CURRENCIES, currencySymbol, formatMoney } from '../lib/currency';
 import { SplitwiseImportModal } from './SplitwiseImportModal';
 import { AnalyticsView, SpendSummary } from './SplitAnalytics';
@@ -699,8 +700,14 @@ const RecurringSheet: React.FC<{
                   {r.active ? <Pause size={15} /> : <Play size={15} />}
                 </button>
                 <button
-                  onClick={() => {
-                    if (confirm(`Stop repeating ${r.category}? Expenses already added stay.`)) void remove({ id: r._id as Id<'recurringExpenses'> });
+                  onClick={async () => {
+                    const ok = await confirmDialog({
+                      title: `Stop repeating ${r.category}?`,
+                      body: 'Expenses already added stay.',
+                      confirmLabel: 'Stop repeating',
+                      danger: true,
+                    });
+                    if (ok) void remove({ id: r._id as Id<'recurringExpenses'> });
                   }}
                   aria-label="Delete"
                   className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-coral"

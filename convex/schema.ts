@@ -31,6 +31,9 @@ export default defineSchema({
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
     avatarStorageId: v.optional(v.id("_storage")),
+    // "Clear chat": messages sent before this moment are hidden for this user
+    // only; the partner keeps their copy.
+    chatClearedAt: v.optional(v.number()),
   })
     .index("email", ["email"])
     .index("phone", ["phone"]),
@@ -183,11 +186,20 @@ export default defineSchema({
     text: v.optional(v.string()),
     imageStorageId: v.optional(v.id("_storage")),
     voiceStorageId: v.optional(v.id("_storage")),
+    // Seconds, measured while recording: Chrome's recorded webm files report
+    // an unknown (Infinity) length until fully played, so it can't be read back.
+    voiceDuration: v.optional(v.number()),
     reaction: v.optional(v.string()),
     // sent = no stamps; delivered = the recipient's app received it;
     // seen = the recipient had the chat open (readAt).
     deliveredAt: v.optional(v.number()),
     readAt: v.optional(v.number()),
+    // "Delete for everyone": the content and files are gone; the bubble stays
+    // as a "This message was deleted" placeholder so the thread doesn't
+    // silently change under the other person.
+    deletedAt: v.optional(v.number()),
+    // "Delete for me": hidden for these users only.
+    hiddenFor: v.optional(v.array(v.id("users"))),
   }),
 
   liveLocations: defineTable({

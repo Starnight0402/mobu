@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Utensils, Plane, Dumbbell, Coffee, Compass, Star, Plus, X, Check, Dices, Trash2 } from 'lucide-react';
 import { Goal } from '../types';
 import { useBackHandler } from '../lib/backButtonStack';
+import { confirmDialog } from './Dialog';
 
 const CATEGORIES = ['adventure', 'cooking', 'fitness', 'travel', 'relaxation'] as const;
 
@@ -57,7 +58,7 @@ export const GoalsView: React.FC = () => {
   };
 
   const deleteGoal = async (goal: (typeof goals)[number]) => {
-    if (confirm(`Delete "${goal.title}"?`)) {
+    if (await confirmDialog({ title: `Delete "${goal.title}"?`, body: "Its progress goes with it. This can't be undone.", confirmLabel: 'Delete', danger: true })) {
       await removeGoal({ id: goal._id });
     }
   };

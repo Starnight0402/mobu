@@ -1,9 +1,20 @@
-import React, { Suspense, useCallback, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Authenticated, Unauthenticated, AuthLoading, useMutation, useQuery } from 'convex/react';
 import { Navigation } from './components/Navigation';
 import { PullToRefresh } from './components/PullToRefresh';
 import { useAndroidBackButton } from './lib/useAndroidBackButton';
-import { initialTab, onGoToTab, pushTab, rememberTab, tabFromHash } from './lib/navigation';
+import {
+  initialTab,
+  markHistoryLanding,
+  onGoToTab,
+  pushTab,
+  rememberTab,
+  replaceTab,
+  restoreScroll,
+  tabFromHash,
+  takeRestoreTarget,
+} from './lib/navigation';
+import { DialogHost } from './components/Dialog';
 import { Dashboard } from './components/Dashboard';
 import { TrackingForm } from './components/TrackingForm';
 import { MemoryBoard } from './components/MemoryBoard';
@@ -26,7 +37,7 @@ import { LightboxProvider } from './components/Lightbox';
 import { CallProvider } from './components/CallProvider';
 import { NotificationProvider, useNotifications } from './components/NotificationProvider';
 import { NotificationsView } from './components/NotificationsView';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, MotionConfig } from 'motion/react';
 import { api } from '../convex/_generated/api';
 
 const MiniWorldView = React.lazy(() =>
@@ -35,7 +46,11 @@ const MiniWorldView = React.lazy(() =>
 
 export default function App() {
   return (
+    // reducedMotion="user": people who've turned animations down in their OS
+    // settings get instant transitions instead of slides and springs.
+    <MotionConfig reducedMotion="user">
     <PullToRefresh>
+      <DialogHost />
       <LightboxProvider>
         <AuthLoading>
           <div className="min-h-dvh flex items-center justify-center">
@@ -54,6 +69,7 @@ export default function App() {
         </Authenticated>
       </LightboxProvider>
     </PullToRefresh>
+    </MotionConfig>
   );
 }
 
@@ -69,11 +85,20 @@ const VALID_TABS = new Set([
  * history entry, so Back returns to the screen you came from (see
  * lib/navigation.ts and lib/backButtonStack.ts).
  */
-function useHashTab(): [string, (tab: string) => void] {
+type SetTab = (tab: string, opts?: { replace?: boolean }) => void;
+
+function useHashTab(): [string, SetTab] {
   const [activeTab, setTab] = useState(() => initialTab(VALID_TABS));
+  const tabRef = useRef(activeTab);
+  tabRef.current = activeTab;
 
   useEffect(() => {
-    const onPop = () => setTab(tabFromHash(VALID_TABS) ?? 'home');
+    const onPop = () => {
+      const next = tabFromHash(VALID_TABS) ?? 'home';
+      // Landing on another screen via Back: return to where it was scrolled.
+      if (next !== tabRef.current) markHistoryLanding();
+      setTab(next);
+    };
     window.addEventListener('popstate', onPop);
     window.addEventListener('hashchange', onPop);
     return () => {
@@ -84,14 +109,16 @@ function useHashTab(): [string, (tab: string) => void] {
 
   useEffect(() => rememberTab(activeTab), [activeTab]);
 
-  const setActiveTab = useCallback((tab: string) => {
+  const setActiveTab = useCallback<SetTab>((tab, opts) => {
     const next = VALID_TABS.has(tab) ? tab : 'home';
     setTab(next);
-    if ((tabFromHash(VALID_TABS) ?? 'home') !== next) pushTab(next);
+    if ((tabFromHash(VALID_TABS) ?? 'home') === next) return;
+    if (opts?.replace) replaceTab(next);
+    else pushTab(next);
   }, []);
 
   // Lets screens link elsewhere without owning navigation state.
-  useEffect(() => onGoToTab(setActiveTab), [setActiveTab]);
+  useEffect(() => onGoToTab((tab) => setActiveTab(tab)), [setActiveTab]);
 
   return [activeTab, setActiveTab];
 }
@@ -134,7 +161,8 @@ function AuthenticatedApp() {
       case 'home':
         return <Dashboard key="home" onNavigate={setActiveTab} />;
       case 'track':
-        return <TrackingForm key="track" onSuccess={() => setActiveTab('home')} />;
+        // Replace, not push: Back after saving shouldn't reopen the empty form.
+        return <TrackingForm key="track" onSuccess={() => setActiveTab('home', { replace: true })} />;
       case 'chat':
         return <ChatView key="chat" />;
       case 'call':
@@ -192,7 +220,7 @@ function AppShell({
   children,
 }: {
   activeTab: string;
-  setActiveTab: (tab: string) => void;
+  setActiveTab: SetTab;
   children: React.ReactNode;
 }) {
   const { markTabRead } = useNotifications();
@@ -202,21 +230,19 @@ function AppShell({
     markTabRead(activeTab);
   }, [activeTab, markTabRead]);
 
-  // A new screen starts at the top rather than inheriting the previous one's
-  // scroll offset.
-  useEffect(() => {
-    window.scrollTo(0, 0);
+  // A new screen starts at the top; one you return to with Back reopens where
+  // you left it. A layout effect, so it runs before the new screen's own
+  // effects (Chat jumping to its newest message) rather than undoing them.
+  useLayoutEffect(() => {
+    restoreScroll(takeRestoreTarget());
   }, [activeTab]);
 
   // Any open modal/sheet gets first refusal (see useBackHandler call sites);
-  // otherwise back goes to Home, and minimizes rather than exiting once
-  // already there.
+  // otherwise back goes to the previous screen, and minimizes rather than
+  // exiting on Home.
   useAndroidBackButton(
-    useCallback(() => {
-      if (activeTab === 'home') return false;
-      setActiveTab('home');
-      return true;
-    }, [activeTab, setActiveTab]),
+    activeTab === 'home',
+    useCallback(() => setActiveTab('home', { replace: true }), [setActiveTab]),
   );
 
   return (
@@ -224,17 +250,18 @@ function AppShell({
       className="min-h-dvh max-w-4xl mx-auto px-4 sm:px-6"
       style={{ paddingTop: 'max(1.75rem, calc(env(safe-area-inset-top) + 1rem))' }}
     >
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={activeTab}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.3 }}
-        >
-          {children}
-        </motion.div>
-      </AnimatePresence>
+      {/* No exit animation: the old screen used to fade out completely
+          (0.3s) before the new one started fading in (another 0.3s), so
+          every tab tap felt slow. Now the new screen is there at once and
+          just settles in. */}
+      <motion.div
+        key={activeTab}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ opacity: { duration: 0.15 }, y: { type: 'spring', stiffness: 500, damping: 40 } }}
+      >
+        {children}
+      </motion.div>
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
     </div>
   );

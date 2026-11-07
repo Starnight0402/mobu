@@ -27,6 +27,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNotifications } from './NotificationProvider';
 import { haptic } from '../lib/haptics';
 import { useBackHandler } from '../lib/backButtonStack';
+import { OPEN_COMPOSER_EVENT, retapTab } from '../lib/navigation';
+import { BottomSheet } from './BottomSheet';
 
 interface NavigationProps {
   activeTab: string;
@@ -111,6 +113,13 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
 
   const go = (tab: string) => {
     haptic('select');
+    if (tab === activeTab) {
+      // Tapping the screen you're on: back to its top (or the screen's own
+      // "home" position, e.g. Chat's newest message), like any native tab bar.
+      setMoreOpen(false);
+      if (!retapTab(tab)) window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     setActiveTab(tab);
   };
 
@@ -132,29 +141,13 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
     <>
       <AnimatePresence>
         {moreOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setMoreOpen(false)}
-              className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 400, damping: 38 }}
-              drag="y"
-              dragConstraints={{ top: 0, bottom: 0 }}
-              dragElastic={{ top: 0, bottom: 0.4 }}
-              onDragEnd={(_e, info) => {
-                if (info.offset.y > 80 || info.velocity.y > 500) setMoreOpen(false);
-              }}
-              className="fixed bottom-0 left-0 right-0 z-[70] mx-auto w-full max-w-lg glass-sheet rounded-t-[2rem] border-t border-x px-5 pt-3"
-              style={{ paddingBottom: 'max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem))' }}
-            >
-              <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
+          <BottomSheet
+            key="us"
+            label="Us"
+            onClose={() => setMoreOpen(false)}
+            z={60}
+            backdropClassName="bg-black/70 backdrop-blur-sm"
+          >
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-[11px] uppercase tracking-[0.2em] text-white/40">Us</h2>
                 <button
@@ -194,32 +187,13 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
                   </section>
                 ))}
               </div>
-            </motion.div>
-          </>
+          </BottomSheet>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {addOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setAddOpen(false)}
-              className="fixed inset-0 z-[60] bg-black/70"
-            />
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 400, damping: 38 }}
-              role="dialog"
-              aria-label="Add something"
-              className="fixed bottom-0 left-0 right-0 z-[70] mx-auto w-full max-w-lg glass-sheet rounded-t-[2rem] border-t border-x px-5 pt-3"
-              style={{ paddingBottom: 'max(1.5rem, calc(env(safe-area-inset-bottom) + 1rem))' }}
-            >
-              <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
+          <BottomSheet key="add" label="Add something" onClose={() => setAddOpen(false)} z={60}>
               <h2 className="mb-3 text-xl font-medium">Add something</h2>
               <div className="space-y-2">
                 {ADD_ACTIONS.map((a) => {
@@ -228,14 +202,23 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
                     <button
                       key={a.id}
                       onClick={() => {
+                        haptic('select');
+                        // Close explicitly: when you're already on that screen
+                        // there's no navigation to close it, and it used to stay open.
+                        setAddOpen(false);
                         if (a.composer) {
+                          if (activeTab === a.tab) {
+                            // Memories is already mounted, so it won't read the flag below.
+                            window.dispatchEvent(new Event(OPEN_COMPOSER_EVENT));
+                            return;
+                          }
                           try {
                             sessionStorage.setItem('mobu-open-composer', '1');
                           } catch {
                             // Without storage the user just lands on Memories and taps +.
                           }
                         }
-                        go(a.tab);
+                        setActiveTab(a.tab);
                       }}
                       className="flex min-h-[56px] w-full items-center gap-4 rounded-2xl border border-white/8 bg-surface px-4 py-3 text-left transition-colors hover:bg-raised active:scale-[0.99]"
                     >
@@ -250,8 +233,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
                   );
                 })}
               </div>
-            </motion.div>
-          </>
+          </BottomSheet>
         )}
       </AnimatePresence>
 
