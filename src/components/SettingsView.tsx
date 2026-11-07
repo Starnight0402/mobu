@@ -8,7 +8,7 @@ import { api } from '../../convex/_generated/api';
 import { AppSettings } from '../types';
 import { useTheme } from '../hooks/useTheme';
 import { useNotifications } from './NotificationProvider';
-import { haptic, hapticsEnabled, hapticsSupported, setHapticsEnabled } from '../lib/haptics';
+import { haptic, hapticsEnabled, hapticsSupported, nativeHaptics, setHapticsEnabled } from '../lib/haptics';
 import { compressImage, UnreadableImageError } from '../lib/image';
 import { saveTextFile } from '../lib/saveFile';
 
@@ -244,7 +244,11 @@ export const SettingsView: React.FC = () => {
               <Vibrate size={12} /> Haptics
             </label>
             <p className="mt-1 text-[10px] text-white/30">
-              {hapticsSupported ? 'Vibration on taps, alerts and calls' : 'Not supported on this device'}
+              {nativeHaptics
+                ? 'Rich haptics on taps, chat, alerts and calls. Strength follows your phone’s touch feedback setting.'
+                : hapticsSupported
+                  ? 'Vibration on taps, alerts and calls'
+                  : 'Not supported on this device'}
             </p>
           </div>
           <Toggle
@@ -254,7 +258,7 @@ export const SettingsView: React.FC = () => {
               const next = !haptics;
               setHaptics(next);
               setHapticsEnabled(next);
-              if (next) haptic('success');
+              if (next) haptic('toggleOn');
             }}
           />
         </div>

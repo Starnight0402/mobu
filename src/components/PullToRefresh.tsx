@@ -38,6 +38,9 @@ export const PullToRefresh: React.FC<{ children: React.ReactNode }> = ({ childre
   const startY = useRef<number | null>(null);
   const pullRef = useRef(0);
   const busyRef = useRef(false);
+  // Whether this pull has passed the point where letting go refreshes, so the
+  // "armed" tick plays once as you cross it.
+  const armedRef = useRef(false);
 
   useEffect(() => {
     const setPullBoth = (v: number) => {
@@ -76,19 +79,27 @@ export const PullToRefresh: React.FC<{ children: React.ReactNode }> = ({ childre
         setPullBoth(0);
         return;
       }
-      setPullBoth(rubberBand(delta, window.innerHeight));
+      const next = rubberBand(delta, window.innerHeight);
+      if (next >= PULL_THRESHOLD && !armedRef.current) {
+        armedRef.current = true;
+        haptic('threshold');
+      } else if (next < PULL_THRESHOLD && armedRef.current) {
+        armedRef.current = false;
+        haptic('tick');
+      }
+      setPullBoth(next);
     };
 
     const refresh = async () => {
       busyRef.current = true;
       setPhase('checking');
-      haptic('select');
       const result = await checkForUpdate();
       if (result !== 'current') {
         window.location.reload();
         return;
       }
       setPhase('current');
+      haptic('success');
       setPullBoth(0);
       window.setTimeout(() => {
         setPhase('idle');
@@ -97,6 +108,7 @@ export const PullToRefresh: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     const onTouchEnd = () => {
+      armedRef.current = false;
       if (startY.current != null && pullRef.current >= PULL_THRESHOLD && !busyRef.current) {
         void refresh();
       } else if (!busyRef.current) {

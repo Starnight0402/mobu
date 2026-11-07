@@ -7,6 +7,7 @@ import {applyStoredThemeOnBoot} from './hooks/useTheme';
 import {primeAudioOnFirstGesture} from './lib/ringtone';
 import {reloadOnResume} from './lib/nativeReload';
 import {reloadOnNewServiceWorker} from './lib/swUpdate';
+import {installTapHaptics} from './lib/haptics';
 import './index.css';
 
 // Without this, a new deploy's service worker installs and activates in the
@@ -21,6 +22,9 @@ applyStoredThemeOnBoot();
 // Browsers won't let audio start without a prior user gesture. Arming this at
 // boot means the first tap anywhere unlocks the ringtone for later.
 primeAudioOnFirstGesture();
+
+// In the Android app, every button gives a light system tap (lib/haptics.ts).
+installTapHaptics();
 
 // Keeps the Android APK's OTA shell (capacitor.config.ts's server.url) fresh
 // across app switches, not just cold starts.

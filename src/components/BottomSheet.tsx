@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
+import { haptic } from '../lib/haptics';
 
 /**
  * The app's one bottom-sheet look and feel: dimmed backdrop (tap to close), a
@@ -36,7 +37,10 @@ export const BottomSheet: React.FC<{
       dragConstraints={{ top: 0, bottom: 0 }}
       dragElastic={{ top: 0, bottom: 0.4 }}
       onDragEnd={(_e, info) => {
-        if (info.offset.y > 80 || info.velocity.y > 500) onClose();
+        if (info.offset.y > 80 || info.velocity.y > 500) {
+          haptic('tick');
+          onClose();
+        }
       }}
       role="dialog"
       aria-modal="true"

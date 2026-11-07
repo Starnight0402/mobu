@@ -101,7 +101,13 @@ export const NotificationProvider: React.FC<{
   const unreadByTab = unread?.byTab ?? {};
   const unreadTotal = unread?.total ?? 0;
 
+  // The screen being looked at (AppShell reports it through markTabRead). A
+  // toast about the screen you're already on is noise: Chat, for one, gives
+  // its own soft tick when a message lands.
+  const currentTabRef = useRef<string | null>(null);
+
   const toast = useCallback((t: Omit<Toast, 'id'>) => {
+    if (t.kind !== 'call' && t.tab === currentTabRef.current && document.visibilityState === 'visible') return;
     const id = ++toastId.current;
     setToasts((prev) => [...prev.slice(-2), { ...t, id }]);
     haptic(t.kind === 'call' ? 'ring' : 'message');
@@ -232,6 +238,7 @@ export const NotificationProvider: React.FC<{
 
   const markTabRead = useCallback(
     (tab: string) => {
+      currentTabRef.current = tab;
       if ((unreadByTab[tab] ?? 0) > 0) void markTabReadMutation({ tab });
     },
     [unreadByTab, markTabReadMutation],

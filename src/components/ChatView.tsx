@@ -9,6 +9,7 @@ import { useLightbox } from './Lightbox';
 import { haptic } from '../lib/haptics';
 import { goToTab, onRetapTab } from '../lib/navigation';
 import { useBackHandler } from '../lib/backButtonStack';
+import { hideDock, useDockAutoHide, useDockHidden } from '../lib/dock';
 import { Avatar, CoupleAvatars } from './Avatar';
 import { BottomSheet } from './BottomSheet';
 import {
@@ -95,7 +96,17 @@ export const formatDuration = (seconds: number) => {
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 };
 
+// Where the message box sits: just above the dock, or near the bottom edge
+// (above the dock's handle) while Chat has the dock tucked away.
+const COMPOSER_BOTTOM_DOCKED = 'max(6rem, calc(env(safe-area-inset-bottom) + 5rem))';
+const COMPOSER_BOTTOM_TUCKED = 'max(2rem, calc(env(safe-area-inset-bottom) + 1.75rem))';
+
 export const ChatView: React.FC = () => {
+  // The thread gets the whole bottom of the screen; a handle brings the dock
+  // back (see lib/dock.ts).
+  useDockAutoHide();
+  const dockHidden = useDockHidden();
+  const composerBottom = dockHidden ? COMPOSER_BOTTOM_TUCKED : COMPOSER_BOTTOM_DOCKED;
   const [limit, setLimit] = useState(PAGE);
   const result = useQuery(api.messages.list, { limit });
   // A bigger limit is a new query that starts out undefined; keep showing the
@@ -120,7 +131,7 @@ export const ChatView: React.FC = () => {
   const [selected, setSelected] = useState<Message | null>(null);
   const [chatMenu, setChatMenu] = useState<'closed' | 'open' | 'confirm-clear'>('closed');
   const bindLongPress = useLongPress<Message>((m) => {
-    haptic('select');
+    haptic('longPress');
     setSelected(m);
   });
 
@@ -177,13 +188,18 @@ export const ChatView: React.FC = () => {
   const lastMessage = messages[messages.length - 1];
   useEffect(() => {
     if (!lastMessage) return;
-    if (!hasSnappedRef.current) {
+    const firstLoad = !hasSnappedRef.current;
+    if (firstLoad) {
       scrollToLatest('auto');
       hasSnappedRef.current = true;
     } else if (atBottomRef.current || lastMessage.senderId === currentUser?._id) {
       scrollToLatest();
     } else {
       setNewBelow((n) => n + 1);
+    }
+    // A soft double tick when your partner's message lands while you're here.
+    if (!firstLoad && currentUser && lastMessage.senderId !== currentUser._id && document.visibilityState === 'visible') {
+      haptic('receive');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastMessage?._id]);
@@ -202,6 +218,12 @@ export const ChatView: React.FC = () => {
     anchorRef.current = null;
     window.scrollTo(0, anchor.y + (document.documentElement.scrollHeight - anchor.height));
   }, [firstId, loadingEarlier]);
+
+  // The dock coming or going changes how much room the thread has; if you
+  // were reading the latest message, stay on it.
+  useLayoutEffect(() => {
+    if (atBottomRef.current) bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+  }, [dockHidden]);
 
   // Re-tapping Chat in the bar jumps to the newest message rather than the top.
   useEffect(() => onRetapTab('chat', () => scrollToLatest()), []);
@@ -228,13 +250,14 @@ export const ChatView: React.FC = () => {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim() || sending) return;
+    haptic('send');
     setSending(true);
     setError(null);
     try {
       await sendMessage({ text: text.trim() });
       setText('');
-      haptic('tap');
     } catch (err) {
+      haptic('error');
       console.error('Send failed', err);
       setError("Message didn't send — tap send to retry.");
     } finally {
@@ -295,7 +318,7 @@ export const ChatView: React.FC = () => {
       recordStartRef.current = Date.now();
       setRecordSeconds(0);
       setRecording(true);
-      haptic('select');
+      haptic('recordStart');
     } catch (err) {
       console.error('Microphone access denied', err);
       setError('Microphone access is blocked — allow it in your browser or app settings.');
@@ -303,6 +326,7 @@ export const ChatView: React.FC = () => {
   };
 
   const stopRecording = () => {
+    if (!cancelRecordingRef.current) haptic('recordStop');
     mediaRecorderRef.current?.stop();
     setRecording(false);
   };
@@ -310,7 +334,7 @@ export const ChatView: React.FC = () => {
   /** Throws the recording away instead of sending it. */
   const cancelRecording = () => {
     cancelRecordingRef.current = true;
-    haptic('tap');
+    haptic('delete');
     stopRecording();
   };
 
@@ -355,7 +379,7 @@ export const ChatView: React.FC = () => {
   };
 
   const toggleHeart = (id: Id<'messages'>, current?: string | null) => {
-    haptic('success');
+    haptic(current === '❤️' ? 'tap' : 'heart');
     react({ id, reaction: current === '❤️' ? undefined : '❤️' });
   };
 
@@ -423,7 +447,7 @@ export const ChatView: React.FC = () => {
           multi-line messages) so the last message is never hidden behind it. */}
       <div
         className="space-y-3 pr-1"
-        style={{ paddingBottom: `calc(max(6rem, calc(env(safe-area-inset-bottom) + 5rem)) + ${composerHeight + 12}px)` }}
+        style={{ paddingBottom: `calc(${composerBottom} + ${composerHeight + 12}px)` }}
       >
         {hasMore && (
           <div className="flex justify-center pb-2">
@@ -525,7 +549,7 @@ export const ChatView: React.FC = () => {
           list's own pb-40 reserves room for it to never overlap. */}
       <div
         className="fixed inset-x-0 z-20 px-4 sm:px-6"
-        style={{ bottom: 'max(6rem, calc(env(safe-area-inset-bottom) + 5rem))' }}
+        style={{ bottom: composerBottom, transition: 'bottom 420ms cubic-bezier(.22,1,.36,1)' }}
       >
         <AnimatePresence>
           {!atBottom && messages.length > 0 && (
@@ -535,7 +559,10 @@ export const ChatView: React.FC = () => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.9 }}
               transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-              onClick={() => scrollToLatest()}
+              onClick={() => {
+                haptic('tick');
+                scrollToLatest();
+              }}
               aria-label={newBelow > 0 ? 'Jump to new messages' : 'Jump to latest'}
               className="mx-auto mb-2 flex h-9 w-fit items-center gap-1.5 rounded-full glass px-3 text-xs text-white/80 shadow-xl"
             >
@@ -597,6 +624,7 @@ export const ChatView: React.FC = () => {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onComposerKeyDown}
+              onFocus={hideDock}
               placeholder="Message…"
               ref={inputRef}
               rows={1}
@@ -646,7 +674,7 @@ export const ChatView: React.FC = () => {
                   label="Delete for everyone"
                   hint={`Removes it for you and ${partner?.name ?? 'your partner'}`}
                   onClick={() =>
-                    fromMenu(() => deleteForEveryone({ id: selected._id }), "Couldn't delete that message — try again.")
+                    fromMenu(() => (haptic('delete'), deleteForEveryone({ id: selected._id })), "Couldn't delete that message — try again.")
                   }
                 />
               )}
@@ -655,7 +683,7 @@ export const ChatView: React.FC = () => {
                 danger
                 label="Delete for me"
                 hint="Only hides it on your side"
-                onClick={() => fromMenu(() => deleteForMe({ id: selected._id }), "Couldn't delete that message — try again.")}
+                onClick={() => fromMenu(() => (haptic('delete'), deleteForMe({ id: selected._id })), "Couldn't delete that message — try again.")}
               />
             </div>
           </ActionSheet>
@@ -694,7 +722,7 @@ export const ChatView: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => fromMenu(() => clearChat(), "Couldn't clear the chat — try again.")}
+                    onClick={() => fromMenu(() => (haptic('delete'), clearChat()), "Couldn't clear the chat — try again.")}
                     className="min-h-[48px] flex-1 rounded-2xl bg-red-500 text-sm font-medium text-white"
                   >
                     Clear chat

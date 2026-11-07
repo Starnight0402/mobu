@@ -23,7 +23,8 @@ import {
   Smile,
   LucideIcon,
 } from 'lucide-react';
-import { AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
+import { hideDock, revealDock, useDockAutoHideActive, useDockHidden, useHideDockOnScroll } from '../lib/dock';
 import { useNotifications } from './NotificationProvider';
 import { haptic } from '../lib/haptics';
 import { useBackHandler } from '../lib/backButtonStack';
@@ -268,7 +269,7 @@ function useHopIndicator(activeKey: DockKey | null) {
         ],
         { duration },
       );
-      running.current.tick = window.setTimeout(() => haptic('tap'), duration * PASS_AT);
+      running.current.tick = window.setTimeout(() => haptic('tick'), duration * PASS_AT);
     }
   }, [activeKey]);
 
@@ -310,6 +311,11 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
         ? 'us'
         : null;
   const { dockRef, indRef, plusRef, tabRefs } = useHopIndicator(glowKey);
+
+  // Chat tucks the dock away (lib/dock.ts); a handle brings it back.
+  const dockHidden = useDockHidden();
+  const autoHide = useDockAutoHideActive();
+  useHideDockOnScroll();
 
   // Anything the bar doesn't badge directly rolls up onto the More button, so
   // no notification is invisible just because its screen is behind the sheet.
@@ -444,9 +450,56 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
         )}
       </AnimatePresence>
 
-      <nav
+      {/* The handle that brings a tucked-away dock back: tap it or swipe up. */}
+      <AnimatePresence>
+        {dockHidden && (
+          <motion.button
+            key="dock-handle"
+            type="button"
+            aria-label="Show navigation"
+            data-no-haptic
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0, transition: { delay: 0.12, type: 'spring', stiffness: 500, damping: 34 } }}
+            exit={{ opacity: 0, y: 8, transition: { duration: 0.12 } }}
+            onClick={() => {
+              haptic('reveal');
+              revealDock();
+            }}
+            onPanEnd={(_e, info) => {
+              if (info.offset.y < -12) {
+                haptic('reveal');
+                revealDock();
+              }
+            }}
+            className="fixed left-1/2 z-50 flex h-7 w-32 -translate-x-1/2 items-center justify-center"
+            style={{ bottom: 'max(0.25rem, env(safe-area-inset-bottom))', touchAction: 'none' }}
+          >
+            <span className="h-1.5 w-10 rounded-full bg-white/30" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      <motion.nav
         className="fixed left-0 right-0 z-50 px-3"
-        style={{ bottom: 'max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem))' }}
+        style={{
+          bottom: 'max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem))',
+          // A vertical swipe on the dock hides it (on screens that tuck it away).
+          touchAction: autoHide ? 'none' : undefined,
+        }}
+        initial={false}
+        animate={dockHidden ? { y: '140%', opacity: 0 } : { y: '0%', opacity: 1 }}
+        transition={{
+          y: { type: 'spring', stiffness: 420, damping: 38 },
+          opacity: { duration: dockHidden ? 0.18 : 0.12 },
+        }}
+        aria-hidden={dockHidden || undefined}
+        inert={dockHidden}
+        onPanEnd={(_e, info) => {
+          if (autoHide && info.offset.y > 24 && Math.abs(info.offset.y) > Math.abs(info.offset.x)) {
+            haptic('tick');
+            hideDock();
+          }
+        }}
       >
         <div
           ref={dockRef}
@@ -501,7 +554,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
             }}
           />
         </div>
-      </nav>
+      </motion.nav>
     </>
   );
 };

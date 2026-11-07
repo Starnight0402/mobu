@@ -91,7 +91,7 @@ export const DialogHost: React.FC = () => {
                 type="button"
                 autoFocus
                 onClick={() => {
-                  if (req.danger) haptic('warning');
+                  if (req.danger) haptic('delete');
                   settle(true);
                 }}
                 className={`min-h-[48px] flex-1 rounded-2xl text-sm font-medium ${
