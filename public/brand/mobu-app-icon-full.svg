@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-label="Mobu app icon">
+<title>Mobu app icon</title>
+<!-- Full-bleed Mobu icon: the photo-note scene fills the whole icon and the
+     launcher's own mask is its outline. 108-unit adaptive-icon canvas; the
+     visible area is the inner 72 (18..90), which the note's scene maps onto
+     (original 240-unit note box 40..200, scale 0.45). The peeled corner folds
+     along x + y = 153 onto a light under-page. -->
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0.1" stop-color="#DCCBFF"/><stop offset="0.6" stop-color="#B796F7"/></linearGradient>
+<linearGradient id="sea" x1="0" y1="0" x2="0" y2="0.55"><stop offset="0" stop-color="#FFA494"/><stop offset="1" stop-color="#EC6654"/></linearGradient>
+<linearGradient id="fold" x1="0.2" y1="0.2" x2="1" y2="1"><stop offset="0" stop-color="#F6CFC4"/><stop offset="1" stop-color="#FFF4EE"/></linearGradient>
+<linearGradient id="under" x1="0.6" y1="0.6" x2="1" y2="1"><stop offset="0" stop-color="#FBEFF8"/><stop offset="1" stop-color="#EBDDFF"/></linearGradient>
+<clipPath id="photo"><path d="M-10 -10H118V35L35 118H-10Z"/></clipPath>
+<filter id="flapShadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="-1.4" dy="-1.4" stdDeviation="1.8" flood-color="#6B2F45" flood-opacity="0.32"/></filter>
+</defs>
+<rect width="108" height="108" fill="url(#under)"/>
+<g clip-path="url(#photo)">
+<rect width="108" height="108" fill="url(#sky)"/>
+<path d="M-6 68L18 62.1L31.5 50.4L38.7 54.9L51.3 41.4L63 54L70.2 48.6L90 63L114 72V114H-6Z" fill="#9F7BEA"/>
+<path transform="translate(3 4)" d="M36.76 25.2A9.9 9.9 0 1 0 46.27 38.29A8.1 8.1 0 0 1 36.76 25.2Z" fill="#F2C879"/>
+<path d="M-5.4 63.9C0.9 68.4 7.2 68.4 13.5 63.9S26.1 59.4 32.4 63.9S45 68.4 51.3 63.9S63.9 59.4 70.2 63.9S82.8 68.4 89.1 63.9S101.7 59.4 108 63.9S120.6 68.4 126.9 63.9V118H-5.4Z" fill="url(#sea)"/>
+<path d="M-5.4 63.9C0.9 68.4 7.2 68.4 13.5 63.9S26.1 59.4 32.4 63.9S45 68.4 51.3 63.9S63.9 59.4 70.2 63.9S82.8 68.4 89.1 63.9S101.7 59.4 108 63.9S120.6 68.4 126.9 63.9" fill="none" stroke="#FBF7F2" stroke-width="2.25" stroke-linecap="round"/>
+</g>
+<path d="M90 63L63 90Q67.5 67.5 90 63Z" fill="url(#fold)" filter="url(#flapShadow)"/>
+</svg>
