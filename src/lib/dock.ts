@@ -24,11 +24,23 @@ function subscribe(l: () => void) {
   return () => listeners.delete(l);
 }
 
-/** Call from a screen that wants the dock out of the way while it's open. */
+// Long enough for the dock's glow to finish hopping onto the new tab
+// (HOP_MS_CROSSING in Navigation.tsx) before the dock tucks itself away.
+const TUCK_AFTER_MS = 950;
+
+/**
+ * Call from a screen that wants the dock out of the way while it's open. The
+ * screen opens with the dock still there; a moment later it tucks itself away
+ * into the handle (sooner if you start typing or dragging the thread).
+ */
 export function useDockAutoHide() {
   useEffect(() => {
-    set({ autoHide: true, revealed: false });
-    return () => set({ autoHide: false, revealed: false });
+    set({ autoHide: true, revealed: true });
+    const t = window.setTimeout(hideDock, TUCK_AFTER_MS);
+    return () => {
+      window.clearTimeout(t);
+      set({ autoHide: false, revealed: false });
+    };
   }, []);
 }
 

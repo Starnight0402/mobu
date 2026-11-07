@@ -293,6 +293,134 @@ function useHopIndicator(activeKey: DockKey | null) {
   return { dockRef, indRef, plusRef, tabRefs };
 }
 
+/* ---------------------------------------------------------------------------
+ * Tucking the dock away (Chat) as a morph, not a drop.
+ *
+ * Hiding: the icons fade out of the glass bar, then the bar itself shrinks
+ * and sinks into the handle pill at the bottom, and becomes it. Bringing it
+ * back runs the same thing in reverse: the pill grows into the bar, then the
+ * icons fade in. One fixed "shape" element does the morph between the
+ * measured bar and the measured pill; both are fixed to the viewport, so page
+ * scroll can't throw the measurement off.
+ * ------------------------------------------------------------------------- */
+
+type DockPhase = 'docked' | 'hiding' | 'tucked' | 'revealing';
+type ShapeBox = { x: number; y: number; w: number; h: number; r: number; bg: string; border: string };
+
+function boxOf(el: HTMLElement): ShapeBox {
+  const r = el.getBoundingClientRect();
+  const cs = getComputedStyle(el);
+  return {
+    x: r.left,
+    y: r.top,
+    w: r.width,
+    h: r.height,
+    r: parseFloat(cs.borderTopLeftRadius) || 0,
+    bg: cs.backgroundColor,
+    border: cs.borderTopColor,
+  };
+}
+
+// Duration-based, so it ends on time: a stiffness spring over a few hundred
+// pixels keeps settling sub-pixel for another second, and the handle isn't
+// tappable until the morph has finished.
+const MORPH_SPRING = { type: 'spring' as const, duration: 0.55, bounce: 0.12 };
+const ICON_FADE_S = 0.16;
+
+function useDockMorph(hidden: boolean, dockRef: React.RefObject<HTMLDivElement | null>) {
+  const pillRef = useRef<HTMLSpanElement>(null);
+  const shapeRef = useRef<HTMLDivElement>(null);
+  const [phase, setPhase] = useState<DockPhase>(hidden ? 'tucked' : 'docked');
+  const [morph, setMorph] = useState<{ key: number; dir: 'hide' | 'reveal'; from: ShapeBox; to: ShapeBox } | null>(null);
+  const keyRef = useRef(0);
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+
+  useLayoutEffect(() => {
+    const dock = dockRef.current;
+    const pill = pillRef.current;
+    const p = phaseRef.current;
+    const wantHide = hidden && (p === 'docked' || p === 'revealing');
+    const wantReveal = !hidden && (p === 'tucked' || p === 'hiding');
+    if (!wantHide && !wantReveal) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!dock || !pill || reduced) {
+      setMorph(null);
+      setPhase(hidden ? 'tucked' : 'docked');
+      return;
+    }
+    const dockBox = boxOf(dock);
+    const pillBox = boxOf(pill);
+    // Changing direction mid-morph starts from wherever the shape is now.
+    const current = shapeRef.current ? boxOf(shapeRef.current) : null;
+    keyRef.current += 1;
+    setMorph(
+      wantHide
+        ? { key: keyRef.current, dir: 'hide', from: current ?? dockBox, to: pillBox }
+        : { key: keyRef.current, dir: 'reveal', from: current ?? pillBox, to: dockBox },
+    );
+    setPhase(wantHide ? 'hiding' : 'revealing');
+  }, [hidden, dockRef]);
+
+  const shape = (
+    <AnimatePresence>
+      {/* Only while morphing; once docked or tucked the real bar or pill has
+          taken over and the shape fades away. */}
+      {morph && (phase === 'hiding' || phase === 'revealing') && (
+        <motion.div
+          key={morph.key}
+          ref={shapeRef}
+          aria-hidden="true"
+          className="pointer-events-none fixed z-[49] border shadow-2xl"
+          initial={{
+            left: morph.from.x,
+            top: morph.from.y,
+            width: morph.from.w,
+            height: morph.from.h,
+            borderRadius: morph.from.r,
+            backgroundColor: morph.from.bg,
+            borderColor: morph.from.border,
+            opacity: 1,
+          }}
+          animate={{
+            left: morph.to.x,
+            top: morph.to.y,
+            width: morph.to.w,
+            height: morph.to.h,
+            borderRadius: morph.to.r,
+            backgroundColor: morph.to.bg,
+            borderColor: morph.to.border,
+            // Hiding waits for the icons to fade out of the bar first. The
+            // colour stays glass until the shape is nearly pill-sized (a big
+            // light-grey bar looked heavy), and turns back to glass at once
+            // when growing.
+            transition: {
+              ...MORPH_SPRING,
+              delay: morph.dir === 'hide' ? ICON_FADE_S * 0.8 : 0,
+              backgroundColor:
+                morph.dir === 'hide'
+                  ? { duration: 0.22, ease: 'easeOut', delay: ICON_FADE_S * 0.8 + 0.3 }
+                  : { duration: 0.16, ease: 'easeOut' },
+              borderColor:
+                morph.dir === 'hide'
+                  ? { duration: 0.22, ease: 'easeOut', delay: ICON_FADE_S * 0.8 + 0.3 }
+                  : { duration: 0.16, ease: 'easeOut' },
+            },
+          }}
+          // Revealed: the real bar has faded in on top; let the shape go.
+          exit={{ opacity: 0, transition: { duration: 0.18, delay: 0.06 } }}
+          onAnimationComplete={(def) => {
+            if (typeof def === 'object' && def && 'opacity' in def && !('left' in def)) return;
+            setPhase((p) => (morph.dir === 'hide' && p === 'hiding' ? 'tucked' : morph.dir === 'reveal' && p === 'revealing' ? 'docked' : p));
+          }}
+        />
+      )}
+    </AnimatePresence>
+  );
+
+  return { phase, pillRef, shape };
+}
+
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
   const [moreOpen, setMoreOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -316,6 +444,11 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
   const dockHidden = useDockHidden();
   const autoHide = useDockAutoHideActive();
   useHideDockOnScroll();
+  const { phase: dockPhase, pillRef, shape: morphShape } = useDockMorph(dockHidden, dockRef);
+  const docked = dockPhase === 'docked';
+  const tucked = dockPhase === 'tucked';
+  const handleDragY = useRef<number | null>(null);
+  const handleSwiped = useRef(false);
 
   // Anything the bar doesn't badge directly rolls up onto the More button, so
   // no notification is invisible just because its screen is behind the sheet.
@@ -450,35 +583,51 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
         )}
       </AnimatePresence>
 
-      {/* The handle that brings a tucked-away dock back: tap it or swipe up. */}
-      <AnimatePresence>
-        {dockHidden && (
-          <motion.button
-            key="dock-handle"
-            type="button"
-            aria-label="Show navigation"
-            data-no-haptic
-            data-dock-handle
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0, transition: { delay: 0.12, type: 'spring', stiffness: 500, damping: 34 } }}
-            exit={{ opacity: 0, y: 8, transition: { duration: 0.12 } }}
-            onClick={() => {
-              haptic('reveal');
-              revealDock();
-            }}
-            onPanEnd={(_e, info) => {
-              if (info.offset.y < -12) {
-                haptic('reveal');
-                revealDock();
-              }
-            }}
-            className="fixed left-1/2 z-50 flex h-7 w-32 -translate-x-1/2 items-center justify-center"
-            style={{ bottom: 'max(0.25rem, env(safe-area-inset-bottom))', touchAction: 'none' }}
-          >
-            <span className="h-1.5 w-10 rounded-full bg-white/30" />
-          </motion.button>
-        )}
-      </AnimatePresence>
+      {/* The handle that brings a tucked-away dock back: tap it or swipe up.
+          Always laid out (so the morph can measure where the pill sits), but
+          only visible and tappable once the dock has shrunk into it. */}
+      <button
+        type="button"
+        aria-label="Show navigation"
+        aria-hidden={!tucked || undefined}
+        tabIndex={tucked ? 0 : -1}
+        data-no-haptic
+        data-dock-handle
+        onClick={() => {
+          // A swipe already handled it.
+          if (handleSwiped.current) {
+            handleSwiped.current = false;
+            return;
+          }
+          haptic('reveal');
+          revealDock();
+        }}
+        onPointerDown={(e) => {
+          handleDragY.current = e.clientY;
+          handleSwiped.current = false;
+        }}
+        onPointerUp={(e) => {
+          const start = handleDragY.current;
+          handleDragY.current = null;
+          // A swipe up reveals too (the click above covers a plain tap).
+          if (start != null && start - e.clientY > 12) {
+            handleSwiped.current = true;
+            haptic('reveal');
+            revealDock();
+          }
+        }}
+        className="fixed left-1/2 z-50 flex h-8 w-36 -translate-x-1/2 items-center justify-center"
+        style={{
+          bottom: 'max(0.25rem, env(safe-area-inset-bottom))',
+          touchAction: 'none',
+          opacity: tucked ? 1 : 0,
+          pointerEvents: tucked ? 'auto' : 'none',
+        }}
+      >
+        <span ref={pillRef} className="h-1.5 w-11 rounded-full border border-transparent bg-white/35" />
+      </button>
+
+      {morphShape}
 
       <motion.nav
         className="fixed left-0 right-0 z-50 px-3"
@@ -486,18 +635,15 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
           bottom: 'max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem))',
           // A vertical swipe on the dock hides it (on screens that tuck it away).
           touchAction: autoHide ? 'none' : undefined,
-          // Tucked away, its raised + still overlaps the handle off-screen;
-          // it must not swallow the handle's taps.
-          pointerEvents: dockHidden ? 'none' : undefined,
+          pointerEvents: docked ? undefined : 'none',
         }}
         initial={false}
-        animate={dockHidden ? { y: '140%', opacity: 0 } : { y: '0%', opacity: 1 }}
-        transition={{
-          y: { type: 'spring', stiffness: 420, damping: 38 },
-          opacity: { duration: dockHidden ? 0.18 : 0.12 },
-        }}
-        aria-hidden={dockHidden || undefined}
-        inert={dockHidden}
+        // The bar stays put; its contents fade out of the glass as the morph
+        // shape takes over, and fade back in once the shape has grown back.
+        animate={{ opacity: docked ? 1 : 0, scale: docked ? 1 : 0.985 }}
+        transition={{ duration: docked ? 0.2 : ICON_FADE_S, ease: [0.32, 0.72, 0, 1] }}
+        aria-hidden={!docked || undefined}
+        inert={!docked}
         onPanEnd={(_e, info) => {
           if (autoHide && info.offset.y > 24 && Math.abs(info.offset.y) > Math.abs(info.offset.x)) {
             haptic('tick');

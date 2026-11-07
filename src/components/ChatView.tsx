@@ -549,7 +549,12 @@ export const ChatView: React.FC = () => {
           list's own pb-40 reserves room for it to never overlap. */}
       <div
         className="fixed inset-x-0 z-20 px-4 sm:px-6"
-        style={{ bottom: composerBottom, transition: 'bottom 420ms cubic-bezier(.22,1,.36,1)' }}
+        style={{
+          bottom: composerBottom,
+          // Settles in step with the dock shrinking into its handle (or
+          // growing back out of it).
+          transition: `bottom 560ms cubic-bezier(.32,.72,0,1) ${dockHidden ? '130ms' : '0ms'}`,
+        }}
       >
         <AnimatePresence>
           {!atBottom && messages.length > 0 && (
