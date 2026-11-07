@@ -458,6 +458,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
             type="button"
             aria-label="Show navigation"
             data-no-haptic
+            data-dock-handle
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0, transition: { delay: 0.12, type: 'spring', stiffness: 500, damping: 34 } }}
             exit={{ opacity: 0, y: 8, transition: { duration: 0.12 } }}
@@ -485,6 +486,9 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
           bottom: 'max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem))',
           // A vertical swipe on the dock hides it (on screens that tuck it away).
           touchAction: autoHide ? 'none' : undefined,
+          // Tucked away, its raised + still overlaps the handle off-screen;
+          // it must not swallow the handle's taps.
+          pointerEvents: dockHidden ? 'none' : undefined,
         }}
         initial={false}
         animate={dockHidden ? { y: '140%', opacity: 0 } : { y: '0%', opacity: 1 }}
