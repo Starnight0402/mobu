@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery } from 'convex/react';
+import { useMutation, useQuery } from '../lib/queryCache';
 import { GoogleMap, MarkerF, InfoWindowF, useLoadScript } from '@react-google-maps/api';
 import { motion, AnimatePresence } from 'motion/react';
 import { Navigation, LocateFixed, MapPin, KeyRound, Share2, Square, Heart, X } from 'lucide-react';

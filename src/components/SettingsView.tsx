@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useQuery, useMutation, useConvex } from 'convex/react';
+import { useConvex } from 'convex/react';
+import { useQuery, useMutation } from '../lib/queryCache';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { motion } from 'motion/react';
 import { Heart, Globe, DollarSign, Save, LogOut, User, Moon, Sun, Download, Smartphone, Bell, Vibrate, Camera, X, Loader2 } from 'lucide-react';

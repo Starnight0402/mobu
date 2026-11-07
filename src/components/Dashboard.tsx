@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useMutation } from '../lib/queryCache';
 import { motion } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { TogetherCalendar } from './TogetherCalendar';

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useMutation } from 'convex/react';
+import { useMutation } from '../lib/queryCache';
 import { useDropzone } from 'react-dropzone';
 import { parse as readExif, gps as readGps } from 'exifr';
 import { ImagePlus, X, MapPin, MapPinned, Loader2, Check, AlertTriangle, Crosshair } from 'lucide-react';

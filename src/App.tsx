@@ -1,5 +1,14 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Authenticated, Unauthenticated, AuthLoading, useMutation, useQuery } from 'convex/react';
+import { useConvex, useConvexAuth } from 'convex/react';
+import {
+  clearQueryCache,
+  hasCachedSession,
+  prefetchQuery,
+  recoverFromSnapshotError,
+  setSessionReady,
+  useMutation,
+  useQuery,
+} from './lib/queryCache';
 import { Navigation } from './components/Navigation';
 import { PullToRefresh } from './components/PullToRefresh';
 import { useAndroidBackButton } from './lib/useAndroidBackButton';
@@ -29,7 +38,7 @@ import { InsightsView } from './components/InsightsView';
 import { RelationshipAnalyzerView } from './components/RelationshipAnalyzerView';
 import { FightLogView } from './components/FightLogView';
 import { MapView } from './components/MapView';
-import { ChatView } from './components/ChatView';
+import { CHAT_PAGE, ChatView } from './components/ChatView';
 import { CallView } from './components/CallView';
 import { SignInScreen } from './components/SignInScreen';
 import { NameSetup } from './components/NameSetup';
@@ -52,25 +61,144 @@ export default function App() {
     <PullToRefresh>
       <DialogHost />
       <LightboxProvider>
-        <AuthLoading>
-          <div className="min-h-dvh flex items-center justify-center">
-            <div className="w-2 h-2 rounded-full bg-nothing-purple animate-pulse" />
-          </div>
-        </AuthLoading>
-        <Unauthenticated>
-          <SignInScreen />
-        </Unauthenticated>
-        {/* CallProvider lives above the tab switch so a call survives navigation
-            and the incoming-call sheet can appear from any screen. */}
-        <Authenticated>
-          <CallProvider>
-            <AuthenticatedApp />
-          </CallProvider>
-        </Authenticated>
+        <SessionGate />
       </LightboxProvider>
     </PullToRefresh>
     </MotionConfig>
   );
+}
+
+function Splash() {
+  return (
+    <div className="min-h-dvh flex items-center justify-center">
+      <div className="w-2 h-2 rounded-full bg-nothing-purple animate-pulse" />
+    </div>
+  );
+}
+
+/**
+ * Replaces Convex's <AuthLoading>/<Authenticated>/<Unauthenticated>.
+ *
+ * Confirming the saved login with the server takes a round trip on every cold
+ * start, and that used to be a blank splash followed by every screen loading.
+ * If this device was signed in last time, the app is drawn straight away from
+ * saved snapshots (lib/queryCache.ts) while that check runs; live queries and
+ * any mutations wait for it. It's the same tree either way, so nothing
+ * remounts when the check completes.
+ */
+function SessionGate() {
+  const { isLoading, isAuthenticated } = useConvexAuth();
+
+  useLayoutEffect(() => setSessionReady(isAuthenticated), [isAuthenticated]);
+
+  // Signed out (or the saved login was rejected): nothing from that session
+  // may stay on the device.
+  const signedOut = !isLoading && !isAuthenticated;
+  useEffect(() => {
+    if (signedOut) clearQueryCache();
+  }, [signedOut]);
+
+  if (isAuthenticated || (isLoading && hasCachedSession())) {
+    return (
+      <SnapshotErrorBoundary>
+        {/* CallProvider lives above the tab switch so a call survives
+            navigation and the incoming-call sheet can appear from any screen. */}
+        <CallProvider>
+          <AuthenticatedApp />
+        </CallProvider>
+      </SnapshotErrorBoundary>
+    );
+  }
+  if (isLoading) return <Splash />;
+  return <SignInScreen />;
+}
+
+/**
+ * A saved snapshot from an older build can be in a shape the current code
+ * doesn't expect. If rendering crashes while one is on screen, drop the
+ * snapshots and render again from live data. A second crash isn't the cache's
+ * fault and gets a reload button instead of a white screen.
+ */
+class SnapshotErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { attempt: number; crashed: boolean; failed: boolean }
+> {
+  state = { attempt: 0, crashed: false, failed: false };
+
+  static getDerivedStateFromError() {
+    return { crashed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    if (recoverFromSnapshotError()) {
+      this.setState((s) => ({ attempt: s.attempt + 1, crashed: false }));
+    } else {
+      console.error(error);
+      this.setState({ failed: true });
+    }
+  }
+
+  render() {
+    if (this.state.crashed && !this.state.failed) return null;
+    if (this.state.failed) {
+      return (
+        <div className="min-h-dvh flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <p className="text-sm text-white/60">Something went wrong.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="rounded-full bg-nothing-purple px-5 py-2 text-sm font-medium text-white"
+          >
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return <React.Fragment key={this.state.attempt}>{this.props.children}</React.Fragment>;
+  }
+}
+
+/**
+ * Warms the data for the main screens once the app has settled, so even the
+ * first visit to one opens with live data instead of loading. They then stay
+ * subscribed for a while (see KEEP_ALIVE_MS), which is cheap for an app with
+ * two users.
+ */
+function usePrefetchScreens() {
+  const client = useConvex();
+  const { isAuthenticated } = useConvexAuth();
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const run = () => {
+      prefetchQuery(client, api.messages.list, { limit: CHAT_PAGE });
+      prefetchQuery(client, api.memories.list);
+      prefetchQuery(client, api.expenses.list);
+      prefetchQuery(client, api.expenses.balance);
+      prefetchQuery(client, api.expenses.settlements);
+      prefetchQuery(client, api.recurring.list);
+      prefetchQuery(client, api.tracking.feed, {});
+      prefetchQuery(client, api.tracking.list);
+      prefetchQuery(client, api.tracking.stats);
+      prefetchQuery(client, api.notifications.list);
+      prefetchQuery(client, api.goals.list);
+      prefetchQuery(client, api.capsules.list);
+      prefetchQuery(client, api.insights.list);
+      prefetchQuery(client, api.fights.list);
+      prefetchQuery(client, api.liveLocations.both);
+      prefetchQuery(client, api.settings.get);
+      prefetchQuery(client, api.users.partner);
+    };
+    // After the current screen's own queries, not competing with them.
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(run, { timeout: 3000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(run, 1500);
+    return () => clearTimeout(t);
+  }, [client, isAuthenticated]);
 }
 
 const VALID_TABS = new Set([
@@ -140,17 +268,12 @@ function ChatReceipts() {
 function AuthenticatedApp() {
   const currentUser = useQuery(api.users.current);
   const [activeTab, setActiveTab] = useHashTab();
+  usePrefetchScreens();
 
   // NotificationProvider needs to drive navigation (a tapped notification has
   // to land on the right screen), so it wraps the shell rather than sitting
   // inside it.
-  if (currentUser === undefined) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center">
-        <div className="w-2 h-2 rounded-full bg-nothing-purple animate-pulse" />
-      </div>
-    );
-  }
+  if (currentUser === undefined) return <Splash />;
 
   if (!currentUser?.name) {
     return <NameSetup />;

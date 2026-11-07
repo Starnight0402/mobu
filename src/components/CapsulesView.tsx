@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useMutation } from '../lib/queryCache';
 import { api } from '../../convex/_generated/api';
 import { Capsule } from '../types';
 import { useBackHandler } from '../lib/backButtonStack';

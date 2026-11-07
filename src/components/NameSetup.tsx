@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useMutation } from 'convex/react';
+import { useMutation } from '../lib/queryCache';
 import { motion } from 'motion/react';
 import { api } from '../../convex/_generated/api';
 import { Heart } from 'lucide-react';

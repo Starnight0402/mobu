@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useQuery } from 'convex/react';
+import { useQuery } from '../lib/queryCache';
 import { api } from '../../convex/_generated/api';
 import { motion } from 'motion/react';
 import { Star, Plane, Utensils, Image as ImageIcon, Calendar } from 'lucide-react';

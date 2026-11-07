@@ -11,14 +11,16 @@
  * call, or until the app is backgrounded (when a reload is invisible).
  */
 /**
- * Asks the server whether a newer deploy exists. 'unknown' when there's no
- * service worker to ask, or it didn't answer in time.
+ * Asks the server whether a newer deploy exists. 'unsupported' when there's
+ * no service worker to ask; 'unknown' when it didn't answer in time.
  */
-export async function checkForUpdate(timeoutMs = 4000): Promise<'new' | 'current' | 'unknown'> {
-  if (!('serviceWorker' in navigator)) return 'unknown';
+export async function checkForUpdate(
+  timeoutMs = 4000,
+): Promise<'new' | 'current' | 'unknown' | 'unsupported'> {
+  if (!('serviceWorker' in navigator)) return 'unsupported';
   try {
     const reg = await navigator.serviceWorker.getRegistration();
-    if (!reg) return 'unknown';
+    if (!reg) return 'unsupported';
     const timedOut = new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), timeoutMs));
     if ((await Promise.race([reg.update().then(() => 'done' as const), timedOut])) === 'timeout') return 'unknown';
     return reg.installing || reg.waiting ? 'new' : 'current';

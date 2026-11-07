@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useMutation, useQuery } from 'convex/react';
+import { useMutation, useQuery } from '../lib/queryCache';
 import type { FunctionReturnType } from 'convex/server';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../convex/_generated/api';
@@ -86,7 +86,8 @@ function useLongPress<T>(onLongPress: (item: T) => void, ms = 450) {
 const isAtBottom = () =>
   window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 200;
 
-const PAGE = 200;
+export const CHAT_PAGE = 200;
+const PAGE = CHAT_PAGE;
 const COARSE_POINTER = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
 export const formatDuration = (seconds: number) => {

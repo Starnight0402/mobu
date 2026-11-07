@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery } from 'convex/react';
+import { useMutation, useQuery } from '../lib/queryCache';
 import { motion } from 'motion/react';
 import { X, Upload, Loader2, ArrowRight, AlertTriangle, Check } from 'lucide-react';
 import { api } from '../../convex/_generated/api';

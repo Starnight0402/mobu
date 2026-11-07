@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQuery } from 'convex/react';
+import { useMutation, useQuery } from '../lib/queryCache';
 import { api } from '../../convex/_generated/api';
 
 type Theme = 'light' | 'dark';

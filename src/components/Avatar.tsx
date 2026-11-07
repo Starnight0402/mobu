@@ -1,5 +1,5 @@
 import React from 'react';
-import { useQuery } from 'convex/react';
+import { useQuery } from '../lib/queryCache';
 import { api } from '../../convex/_generated/api';
 
 export const Avatar: React.FC<{ name?: string | null; avatarUrl?: string | null; size?: number; className?: string }> = ({

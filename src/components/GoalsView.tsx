@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useMutation } from '../lib/queryCache';
 import { api } from '../../convex/_generated/api';
 import { motion, AnimatePresence } from 'motion/react';
 import { Utensils, Plane, Dumbbell, Coffee, Compass, Star, Plus, X, Check, Dices, Trash2 } from 'lucide-react';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useQuery } from 'convex/react';
+import { useQuery } from '../lib/queryCache';
 import { api } from '../../convex/_generated/api';
 import { motion } from 'motion/react';
 import { Sparkles, TrendingUp, Zap, Lightbulb } from 'lucide-react';

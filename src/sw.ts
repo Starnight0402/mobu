@@ -1,6 +1,10 @@
 /// <reference lib="webworker" />
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
+import { registerRoute } from 'workbox-routing';
+import { CacheFirst } from 'workbox-strategies';
+import { CacheableResponsePlugin } from 'workbox-cacheable-response';
+import { ExpirationPlugin } from 'workbox-expiration';
 
 declare let self: ServiceWorkerGlobalScope;
 
@@ -10,6 +14,37 @@ clientsClaim();
 // Injected at build time by vite-plugin-pwa with the hashed app-shell assets.
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
+
+// Photos (memories, chat images, avatars) are Convex storage files. A storage
+// id's content never changes, so once a photo has been downloaded it's served
+// from this cache on every later view, reload and cold start instead of
+// being fetched again.
+// Images only: voice notes are fetched with Range requests for seeking, which
+// a plain cache would break.
+registerRoute(
+  ({ url, request }) =>
+    request.destination === 'image' &&
+    url.hostname.endsWith('.convex.cloud') &&
+    url.pathname.startsWith('/api/storage/'),
+  new CacheFirst({
+    cacheName: 'mobu-photos',
+    plugins: [
+      {
+        // An <img> request is no-cors, which would store an opaque response
+        // (unknown status, and each one counted as several MB of quota).
+        // Convex allows CORS, so fetch it as a normal response instead.
+        requestWillFetch: async ({ request }) =>
+          new Request(request.url, { mode: 'cors', credentials: 'omit' }),
+      },
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({
+        maxEntries: 500,
+        maxAgeSeconds: 60 * 60 * 24 * 60,
+        purgeOnQuotaError: true,
+      }),
+    ],
+  }),
+);
 
 interface PushPayload {
   kind: string;
