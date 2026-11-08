@@ -1,48 +1,30 @@
-import { expect, test, type Browser, type Page } from '@playwright/test';
-import { ALLOWED_EMAILS } from '../convex/allowedEmails';
+import { expect, test } from '@playwright/test';
+import { PEOPLE, personPage, submitSignUp } from './people';
 
 /**
  * Full stack, two real people: browser → React → Convex client → local Convex
  * backend → database → live subscription → the *other* person's browser.
  */
 
-test.describe.configure({ mode: 'serial' });
-
-const PASSWORD = 'e2e-password-123';
-
-async function signUp(page: Page, email: string) {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'First time? Create an account' }).click();
-  await page.getByPlaceholder('you@example.com').fill(email);
-  await page.getByPlaceholder('••••••••').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign Up', exact: true }).click();
-}
-
-/** First-run onboarding: "One Last Thing — what should we call you?" */
-async function chooseName(page: Page, name: string) {
-  await page.getByPlaceholder('Your name').fill(name);
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.getByPlaceholder('Your name')).toBeHidden();
-}
-
-async function personPage(browser: Browser) {
-  const ctx = await browser.newContext();
-  return ctx.newPage();
-}
-
 test('a stranger cannot create an account', async ({ page }) => {
-  await signUp(page, 'intruder@example.com');
+  await submitSignUp(page, 'intruder@example.com');
   await expect(page.getByText(/This app is private/)).toBeVisible();
 });
 
-test('both partners sign up, split a bill, settle it and chat in real time', async ({ browser }) => {
-  const a = await personPage(browser);
-  const b = await personPage(browser);
+test("signing up again with someone's email and the wrong password is refused", async ({ browser, page }) => {
+  await personPage(browser, 'asha'); // make sure the account exists
+  await page.goto('/');
+  await page.getByRole('button', { name: 'First time? Create an account' }).click();
+  await page.getByPlaceholder('you@example.com').fill(PEOPLE.asha.email);
+  await page.getByPlaceholder('••••••••').fill('attacker-guess-123');
+  await page.getByRole('button', { name: 'Sign Up', exact: true }).click();
+  await expect(page.getByText(/already exists/)).toBeVisible();
+  await expect(page.getByPlaceholder('you@example.com')).toBeVisible(); // still signed out
+});
 
-  await signUp(a, ALLOWED_EMAILS[0]);
-  await chooseName(a, 'Asha');
-  await signUp(b, ALLOWED_EMAILS[1]);
-  await chooseName(b, 'Bilal');
+test('both partners split a bill, settle it and chat in real time', async ({ browser }) => {
+  const a = await personPage(browser, 'asha');
+  const b = await personPage(browser, 'bilal');
 
   await test.step('A adds an expense; both see the same debt', async () => {
     await a.goto('/#split');

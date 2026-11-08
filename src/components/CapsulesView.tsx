@@ -52,8 +52,9 @@ export const CapsulesView: React.FC = () => {
           <h1 className="text-4xl font-display font-medium tracking-tight dot-matrix">Memory Capsules</h1>
           <p className="text-white/40 text-sm uppercase tracking-widest">Locked moments for the future</p>
         </div>
-        <button 
+        <button
           onClick={() => setIsAdding(true)}
+          aria-label="New capsule"
           className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-all shadow-xl"
         >
           <Plus size={20} />

@@ -5,8 +5,8 @@ import { expect, test } from '@playwright/test';
  * interactive sign-in form. Tighten these as the bundle is split up.
  */
 const BUDGET = {
-  domContentLoadedMs: 2_500,
-  signInInteractiveMs: 4_000,
+  domContentLoadedMs: 1_500,
+  signInInteractiveMs: 2_500,
 };
 
 test('cold load reaches an interactive sign-in form within budget', async ({ page }) => {

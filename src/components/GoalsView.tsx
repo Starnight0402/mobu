@@ -99,6 +99,7 @@ export const GoalsView: React.FC = () => {
           </button>
           <button
             onClick={() => setIsAdding(true)}
+            aria-label="New goal"
             className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-all shadow-xl"
           >
             <Plus size={20} />
@@ -167,6 +168,7 @@ export const GoalsView: React.FC = () => {
               {goal.current < goal.target ? (
                 <button 
                   onClick={() => incrementGoal(goal)}
+                  aria-label={`Add progress to ${goal.title}`}
                   className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/10 hover:border-white/40 transition-all active:scale-95"
                 >
                   <Plus size={14} />
