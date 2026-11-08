@@ -65,7 +65,7 @@ jobs:
           URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           for _ in $(seq 1 30); do
-            if curl -fsS "$URL?nocache=$(date +%s)" | cmp -s - dist/index.html; then
+            if curl -fsSL "$URL?nocache=$(date +%s)" | cmp -s - dist/index.html; then
               echo "Live site is serving this build."; exit 0
             fi
             sleep 10
