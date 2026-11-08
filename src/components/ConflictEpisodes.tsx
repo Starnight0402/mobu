@@ -12,6 +12,7 @@ export interface Episode {
   severity: number;
   topic?: string;
   score: number;
+  messageCount: number;
   openedBy?: string;
   closedBy?: string;
   repaired: boolean;

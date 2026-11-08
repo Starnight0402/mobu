@@ -9,3 +9,8 @@ coverage/
 *.db
 *.db-journal
 .convex/
+# test artifacts
+.e2e-backend/
+dist-e2e/
+test-results/
+playwright-report/

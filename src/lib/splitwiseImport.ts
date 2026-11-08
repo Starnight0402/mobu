@@ -14,6 +14,8 @@
  * debt moves their balance toward zero from below.
  */
 
+import { parseCsvTable } from "./csv";
+
 export interface ParsedExpense {
   date: number;
   description: string;
@@ -50,50 +52,15 @@ export interface SplitwiseParseResult {
   error?: string;
 }
 
-function parseCsvTable(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-
-  const pushField = () => {
-    row.push(field);
-    field = "";
-  };
-  const pushRow = () => {
-    pushField();
-    rows.push(row);
-    row = [];
-  };
-
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += c;
-      }
-    } else if (c === '"') {
-      inQuotes = true;
-    } else if (c === ",") {
-      pushField();
-    } else if (c === "\r") {
-      // skip
-    } else if (c === "\n") {
-      pushRow();
-    } else {
-      field += c;
-    }
-  }
-  if (field.length > 0 || row.length > 0) pushRow();
-
-  return rows.filter((r) => r.some((c) => c.trim() !== ""));
+/**
+ * The payer's share as a percentage, from what they're owed back. Kept to four
+ * decimals rather than a whole percent: Splitwise "by exact amounts" splits
+ * routinely land on thirds, and rounding 66.67% to 67% loses real money on
+ * every such row, which adds up across a whole history.
+ */
+function payerSharePct(owedBack: number, cost: number): number {
+  const pct = Math.round((1 - owedBack / cost) * 100 * 10000) / 10000;
+  return Math.max(0, Math.min(100, pct));
 }
 
 function num(cell: string | undefined): number {
@@ -212,10 +179,10 @@ export function parseSplitwiseCsv(text: string): SplitwiseParseResult {
     }
 
     if (a > 0 && b <= 0) {
-      const share = Math.max(0, Math.min(100, Math.round((1 - a / cost) * 100)));
+      const share = payerSharePct(a, cost);
       expenses.push({ date: ts, description, category, cost, currency, payerIndex: 0, payerShare: share });
     } else if (b > 0 && a <= 0) {
-      const share = Math.max(0, Math.min(100, Math.round((1 - b / cost) * 100)));
+      const share = payerSharePct(b, cost);
       expenses.push({ date: ts, description, category, cost, currency, payerIndex: 1, payerShare: share });
     } else {
       skipped.push({ cells: row, reason: "Couldn't tell who paid" });

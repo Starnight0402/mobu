@@ -53,8 +53,20 @@ npm run lint          # tsc --noEmit
 npm run build          # production build to dist/
 ```
 
+## Testing
+
+| Layer | Command | What it covers |
+| --- | --- | --- |
+| Unit | `npm test` | Pure logic: expense CSV, Splitwise import + carryover maths, WhatsApp parser, conflict/connection detectors (`tests/unit/`) |
+| Integration | `npm test` | Real Convex queries/mutations against the real schema, in memory via `convex-test` (`tests/convex/`). Includes a sweep that finds **every** public function and asserts it rejects signed-out callers. A new function without `requireUserId` fails here. |
+| Performance | `npm run test:perf` | Time budget for the chat-import pipeline on 30k messages (`tests/perf/`) |
+| Bundle | `npm run check:bundle` | Gzip size of the initial load and each lazy chunk vs `perf-budget.json` (a ratchet: lower it when you shrink the bundle) |
+| End-to-end | `npm run test:e2e` | Playwright on a phone profile: two people sign up, split a bill, settle it, and chat live, against the production build and a throwaway local Convex backend (no account needed; `scripts/e2e-backend.mjs`). Also cold-load timing. |
+
+`npm run verify` runs everything except E2E. Run it before pushing.
+
 ## Deployment
 
-Push to `main` and GitHub Actions handles the rest: `npx convex deploy` pushes the backend, then builds and deploys the frontend to GitHub Pages. Requires a `CONVEX_DEPLOY_KEY` repository secret and GitHub Pages set to deploy from "GitHub Actions" (Settings → Pages).
+Push to `main` and GitHub Actions (`.github/workflows/ci.yml`) runs typecheck, unit, integration, perf, bundle and E2E checks. **Only if all of them pass** does it deploy: `npx convex deploy` pushes the backend, then builds and deploys the frontend to GitHub Pages. Pull requests run the same checks without deploying. Requires a `CONVEX_DEPLOY_KEY` repository secret and GitHub Pages set to deploy from "GitHub Actions" (Settings → Pages).
 
 GitHub Pages sites are always publicly reachable at their URL — there's no way to make the served site itself private on a free plan. Privacy comes entirely from Convex-side auth checks on every query and mutation, not from hiding the URL.

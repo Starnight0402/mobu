@@ -1,3 +1,5 @@
+import { parseCsvTable } from './csv';
+
 export type ExpenseCsvRow = {
   spentAt: number;
   category: string;
@@ -41,42 +43,13 @@ export function buildExpenseCsv(
   return lines.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
 }
 
-/** Splits one CSV line into fields, honoring quoted commas and escaped quotes. */
-function splitCsvLine(line: string): string[] {
-  const fields: string[] = [];
-  let cur = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        cur += ch;
-      }
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === ',') {
-      fields.push(cur);
-      cur = '';
-    } else {
-      cur += ch;
-    }
-  }
-  fields.push(cur);
-  return fields;
-}
-
 export function parseExpenseCsv(text: string): { rows: ExpenseCsvRow[]; error?: string } {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length < 2) return { rows: [], error: 'That file has no rows to import.' };
+  // Parse the whole text at once, not line by line: a quoted note may contain
+  // a line break, and splitting on newlines first cut such notes in half.
+  const table = parseCsvTable(text);
+  if (table.length < 2) return { rows: [], error: 'That file has no rows to import.' };
 
-  const header = splitCsvLine(lines[0]).map((h) => h.trim());
+  const header = table[0].map((h) => h.trim());
   const col = (name: string) => header.findIndex((h) => h.toLowerCase() === name.toLowerCase());
   const idx = {
     date: col('Date'),
@@ -93,8 +66,7 @@ export function parseExpenseCsv(text: string): { rows: ExpenseCsvRow[]; error?: 
   }
 
   const rows: ExpenseCsvRow[] = [];
-  for (const line of lines.slice(1)) {
-    const f = splitCsvLine(line);
+  for (const f of table.slice(1)) {
     const spentAt = new Date(f[idx.date]).getTime();
     const amount = parseFloat(f[idx.amount]);
     const splitRatio = parseFloat(f[idx.splitRatio]);
