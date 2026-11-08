@@ -200,7 +200,7 @@ export default defineSchema({
     deletedAt: v.optional(v.number()),
     // "Delete for me": hidden for these users only.
     hiddenFor: v.optional(v.array(v.id("users"))),
-  }),
+  }).index("by_readAt", ["readAt"]),
 
   liveLocations: defineTable({
     userId: v.id("users"),

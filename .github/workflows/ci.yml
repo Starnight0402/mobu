@@ -66,6 +66,11 @@ jobs:
           path: ~/.cache/convex
           key: convex-local-${{ runner.os }}-${{ hashFiles('scripts/e2e-backend.mjs') }}
 
+      - name: Fetch local Convex backend (authenticated, with retries)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/fetch-convex-backend.sh
+
       # Spins up an anonymous local Convex backend (no account, no secrets)
       # plus the production build pointed at it. See scripts/e2e-backend.mjs.
       - name: Playwright

@@ -160,10 +160,15 @@ export const markRead = mutation({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    const unread = await ctx.db
-      .query("messages")
-      .filter((q) => q.and(q.neq(q.field("senderId"), userId), q.eq(q.field("readAt"), undefined)))
-      .collect();
+    // Indexed on readAt: a .filter() here scanned every message ever sent on
+    // each call (it runs whenever a message arrives with chat open), and
+    // would start failing outright past Convex's 32k-documents-read limit.
+    const unread = (
+      await ctx.db
+        .query("messages")
+        .withIndex("by_readAt", (q) => q.eq("readAt", undefined))
+        .collect()
+    ).filter((m) => m.senderId !== userId);
     const now = Date.now();
     for (const m of unread) {
       await ctx.db.patch(m._id, { readAt: now, deliveredAt: m.deliveredAt ?? now });

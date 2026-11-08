@@ -150,6 +150,10 @@ export const answer = mutation({
     const call = await callByCallId(ctx, args.callId);
     if (!call) throw new Error("That call no longer exists");
     if (call.calleeId !== userId) throw new Error("That call isn't for you");
+    // Answering a ring the caller already hung up on (a stale incoming-call
+    // screen) used to flip the ended call back to "active". Active calls
+    // never time out, so that left a ghost call stuck on both phones.
+    if (call.status !== "ringing") throw new Error("That call has already ended");
     await ctx.db.patch(call._id, { status: "active", answeredAt: Date.now() });
   },
 });

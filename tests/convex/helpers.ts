@@ -6,7 +6,10 @@ import type { Id } from '../../convex/_generated/dataModel';
 export const modules = import.meta.glob('../../convex/**/*.*s');
 
 export function setup() {
-  return convexTest(schema, modules);
+  // transactionLimits: enforce production's per-function limits (32k docs
+  // read, 16k written, ...). Off by default in convex-test, which would let a
+  // query that fails in production pass here.
+  return convexTest({ schema, modules, transactionLimits: true });
 }
 
 export type T = ReturnType<typeof setup>;
