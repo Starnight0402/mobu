@@ -163,13 +163,18 @@ function rectIn(el: HTMLElement, dock: HTMLElement): Rect {
 }
 
 function hopFrames(from: Rect, to: Rect, plus: Rect, crossing: boolean, pill: string, accent: string): Keyframe[] {
+  // Over the + when crossing it; a small hop between neighbours.
+  const peak = crossing ? plus.y - 16 : Math.min(centerOf(from).y, centerOf(to).y) - 22;
+  return arcFrames(from, to, peak, pill, pill, accent);
+}
+
+/** Squeeze into a dot, arc up to `peak`, land with a spring and open into `to`. */
+function arcFrames(from: Rect, to: Rect, peak: number, startBg: string, endBg: string, accent: string): Keyframe[] {
   const size = 12;
   const f = centerOf(from);
   const t = centerOf(to);
-  // Over the + when crossing it; a small hop between neighbours.
-  const peak = crossing ? plus.y - 16 : Math.min(f.y, t.y) - 22;
   const frames: Keyframe[] = [
-    toFrame(from, { offset: 0, backgroundColor: pill, easing: 'cubic-bezier(.5,0,.8,.3)' }),
+    toFrame(from, { offset: 0, backgroundColor: startBg, easing: 'cubic-bezier(.5,0,.8,.3)' }),
     toFrame(dotAt(f.x, f.y, size), { offset: 0.18, backgroundColor: accent }),
   ];
   // Constant sideways speed with a parabola for height reads as a real jump.
@@ -181,7 +186,7 @@ function hopFrames(from: Rect, to: Rect, plus: Rect, crossing: boolean, pill: st
     frames.push(toFrame(dotAt(x, y, size), { offset: 0.18 + 0.6 * u, backgroundColor: accent }));
   }
   frames.push(toFrame(dotAt(t.x, t.y, size), { offset: 0.78, backgroundColor: accent, easing: LANDING }));
-  frames.push(toFrame(to, { offset: 1, backgroundColor: pill }));
+  frames.push(toFrame(to, { offset: 1, backgroundColor: endBg }));
   return frames;
 }
 
@@ -294,15 +299,22 @@ function useHopIndicator(activeKey: DockKey | null) {
 }
 
 /* ---------------------------------------------------------------------------
- * Tucking the dock away (Chat) as a morph, not a drop.
+ * Tucking the dock away (Chat): the glow hops into the handle.
  *
- * Hiding: the icons fade out of the glass bar, then the bar itself shrinks
- * and sinks into the handle pill at the bottom, and becomes it. Bringing it
- * back runs the same thing in reverse: the pill grows into the bar, then the
- * icons fade in. One fixed "shape" element does the morph between the
- * measured bar and the measured pill; both are fixed to the viewport, so page
- * scroll can't throw the measurement off.
+ * Hiding: the icons and + fade out, and the active tab's glow does the same
+ * hop it does between tabs (squeeze into the lilac dot, arc, spring) but lands
+ * in the handle spot and opens into the handle itself. The glass bar shrinks
+ * away underneath it. Bringing it back is the same hop in reverse: the handle
+ * squeezes into the dot and hops back onto the tab while the bar grows under
+ * it. So the glow, the bar and the handle read as one object.
+ *
+ * Two fixed elements do it: the "shape" (the glass, motion springs) and the
+ * "traveller" (the glow, WAAPI keyframes shared with the tab hop). Both are
+ * measured in viewport space, so page scroll can't throw them off. Without a
+ * glow (a screen the bar doesn't show) the glass alone morphs into the pill.
  * ------------------------------------------------------------------------- */
+
+const TUCK_HOP_MS = 900;
 
 type DockPhase = 'docked' | 'hiding' | 'tucked' | 'revealing';
 type ShapeBox = { x: number; y: number; w: number; h: number; r: number; bg: string; border: string };
@@ -327,11 +339,30 @@ function boxOf(el: HTMLElement): ShapeBox {
 const MORPH_SPRING = { type: 'spring' as const, duration: 0.55, bounce: 0.12 };
 const ICON_FADE_S = 0.16;
 
-function useDockMorph(hidden: boolean, dockRef: React.RefObject<HTMLDivElement | null>) {
+function viewRect(el: HTMLElement, radius?: number): Rect {
+  const r = el.getBoundingClientRect();
+  const cssR = radius ?? (parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0);
+  // rounded-full computes to 9999px; clamp so the radius tweens sensibly.
+  return { x: r.left, y: r.top, w: r.width, h: r.height, r: Math.min(cssR, r.height / 2, r.width / 2) };
+}
+
+type Morph = { key: number; dir: 'hide' | 'reveal'; from: ShapeBox; to: ShapeBox; travel: boolean };
+
+function useDockMorph(
+  hidden: boolean,
+  dockRef: React.RefObject<HTMLDivElement | null>,
+  indRef: React.RefObject<HTMLDivElement | null>,
+  activeTabEl: () => HTMLElement | null | undefined,
+) {
   const pillRef = useRef<HTMLSpanElement>(null);
   const shapeRef = useRef<HTMLDivElement>(null);
+  const travelRef = useRef<HTMLDivElement>(null);
+  const travelAnim = useRef<Animation | null>(null);
   const [phase, setPhase] = useState<DockPhase>(hidden ? 'tucked' : 'docked');
-  const [morph, setMorph] = useState<{ key: number; dir: 'hide' | 'reveal'; from: ShapeBox; to: ShapeBox } | null>(null);
+  const [morph, setMorph] = useState<Morph | null>(null);
+  // True while the glow is out of the bar (hopping, or sitting in as the handle
+  // mid-tuck); the real glow stays hidden until the traveller lands back on it.
+  const [travelling, setTravelling] = useState(false);
   const keyRef = useRef(0);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -345,6 +376,9 @@ function useDockMorph(hidden: boolean, dockRef: React.RefObject<HTMLDivElement |
     if (!wantHide && !wantReveal) return;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!dock || !pill || reduced) {
+      travelAnim.current?.cancel();
+      travelAnim.current = null;
+      setTravelling(false);
       setMorph(null);
       setPhase(hidden ? 'tucked' : 'docked');
       return;
@@ -353,18 +387,88 @@ function useDockMorph(hidden: boolean, dockRef: React.RefObject<HTMLDivElement |
     const pillBox = boxOf(pill);
     // Changing direction mid-morph starts from wherever the shape is now.
     const current = shapeRef.current ? boxOf(shapeRef.current) : null;
+
+    // The glow's hop, if there's a glow to hop with.
+    const ind = indRef.current;
+    const tab = activeTabEl();
+    const t = travelRef.current;
+    const travel = !!(ind && tab && t && ind.style.opacity !== '0');
+    if (travel) {
+      const tile = viewRect(tab, 16);
+      const handle = viewRect(pill);
+      const tileBg = getComputedStyle(ind).backgroundColor;
+      const pillBg = pillBox.bg;
+      const accent =
+        getComputedStyle(document.documentElement).getPropertyValue('--color-nothing-purple').trim() || '#c3a6ff';
+      const midAir = travelAnim.current?.playState === 'running' || travelAnim.current?.playState === 'finished';
+      const cs = getComputedStyle(t);
+      const from: Rect = midAir
+        ? { x: parseFloat(cs.left), y: parseFloat(cs.top), w: parseFloat(cs.width), h: parseFloat(cs.height), r: parseFloat(cs.borderTopLeftRadius) || 0 }
+        : wantHide
+          ? tile
+          : handle;
+      const fromBg = midAir ? cs.backgroundColor : wantHide ? tileBg : pillBg;
+      travelAnim.current?.cancel();
+      // The arc clears the top of the bar, like a tab hop clears the +.
+      const peak = dockBox.y - 22;
+      const anim = t.animate(arcFrames(from, wantHide ? handle : tile, peak, fromBg, wantHide ? pillBg : tileBg, accent), {
+        duration: TUCK_HOP_MS,
+        delay: wantHide ? 0 : 60,
+        fill: 'both',
+      });
+      travelAnim.current = anim;
+      t.style.opacity = '1';
+      setTravelling(true);
+      anim.onfinish = () => {
+        if (travelAnim.current !== anim) return;
+        if (wantHide) {
+          // Landed in the handle: it is the handle now.
+          setPhase((ph) => (ph === 'hiding' ? 'tucked' : ph));
+        } else {
+          travelAnim.current = null;
+          setTravelling(false);
+        }
+      };
+    } else {
+      travelAnim.current?.cancel();
+      travelAnim.current = null;
+      setTravelling(false);
+    }
+
     keyRef.current += 1;
+    // With a traveller, the glass stays glass the whole way: the glow becomes
+    // the handle, the glass only shrinks away beneath it.
+    const glass = { bg: dockBox.bg, border: dockBox.border };
     setMorph(
       wantHide
-        ? { key: keyRef.current, dir: 'hide', from: current ?? dockBox, to: pillBox }
-        : { key: keyRef.current, dir: 'reveal', from: current ?? pillBox, to: dockBox },
+        ? { key: keyRef.current, dir: 'hide', travel, from: current ?? dockBox, to: travel ? { ...pillBox, ...glass } : pillBox }
+        : { key: keyRef.current, dir: 'reveal', travel, from: current ?? (travel ? { ...pillBox, ...glass } : pillBox), to: dockBox },
     );
     setPhase(wantHide ? 'hiding' : 'revealing');
   }, [hidden, dockRef]);
 
+  // Tucked: the real handle has taken over from the traveller, in the same
+  // commit, so there's no frame with neither.
+  useLayoutEffect(() => {
+    const t = travelRef.current;
+    if (!t) return;
+    if (phase === 'tucked' || !travelling) {
+      t.style.opacity = '0';
+      if (phase === 'tucked' || phase === 'docked') {
+        travelAnim.current?.cancel();
+        travelAnim.current = null;
+      }
+    }
+  }, [phase, travelling]);
+  useEffect(() => {
+    if (phase === 'tucked') setTravelling(false);
+  }, [phase]);
+
+  const fadeGlassOut = morph?.travel && morph.dir === 'hide';
+  const fadeGlassIn = morph?.travel && morph.dir === 'reveal';
   const shape = (
     <AnimatePresence>
-      {/* Only while morphing; once docked or tucked the real bar or pill has
+      {/* Only while morphing; once docked or tucked the real bar or handle has
           taken over and the shape fades away. */}
       {morph && (phase === 'hiding' || phase === 'revealing') && (
         <motion.div
@@ -380,7 +484,7 @@ function useDockMorph(hidden: boolean, dockRef: React.RefObject<HTMLDivElement |
             borderRadius: morph.from.r,
             backgroundColor: morph.from.bg,
             borderColor: morph.from.border,
-            opacity: 1,
+            opacity: fadeGlassIn ? 0 : 1,
           }}
           animate={{
             left: morph.to.x,
@@ -390,6 +494,9 @@ function useDockMorph(hidden: boolean, dockRef: React.RefObject<HTMLDivElement |
             borderRadius: morph.to.r,
             backgroundColor: morph.to.bg,
             borderColor: morph.to.border,
+            // With the glow hopping in, the glass melts away as it reaches
+            // the handle spot instead of becoming the handle.
+            opacity: fadeGlassOut ? 0 : 1,
             // Hiding waits for the icons to fade out of the bar first. The
             // colour stays glass until the shape is nearly pill-sized (a big
             // light-grey bar looked heavy), and turns back to glass at once
@@ -397,6 +504,10 @@ function useDockMorph(hidden: boolean, dockRef: React.RefObject<HTMLDivElement |
             transition: {
               ...MORPH_SPRING,
               delay: morph.dir === 'hide' ? ICON_FADE_S * 0.8 : 0,
+              opacity: fadeGlassOut
+                ? // Gone just as the dot lands in the handle.
+                  { duration: 0.22, ease: 'easeIn', delay: ICON_FADE_S * 0.8 + 0.42 }
+                : { duration: 0.1, ease: 'easeOut' },
               backgroundColor:
                 morph.dir === 'hide'
                   ? { duration: 0.22, ease: 'easeOut', delay: ICON_FADE_S * 0.8 + 0.3 }
@@ -411,6 +522,8 @@ function useDockMorph(hidden: boolean, dockRef: React.RefObject<HTMLDivElement |
           exit={{ opacity: 0, transition: { duration: 0.18, delay: 0.06 } }}
           onAnimationComplete={(def) => {
             if (typeof def === 'object' && def && 'opacity' in def && !('left' in def)) return;
+            // With a traveller, its landing ends the tuck (see above).
+            if (morph.dir === 'hide' && morph.travel) return;
             setPhase((p) => (morph.dir === 'hide' && p === 'hiding' ? 'tucked' : morph.dir === 'reveal' && p === 'revealing' ? 'docked' : p));
           }}
         />
@@ -418,7 +531,11 @@ function useDockMorph(hidden: boolean, dockRef: React.RefObject<HTMLDivElement |
     </AnimatePresence>
   );
 
-  return { phase, pillRef, shape };
+  const traveller = (
+    <div ref={travelRef} aria-hidden="true" className="pointer-events-none fixed left-0 top-0 z-[51] opacity-0" />
+  );
+
+  return { phase, pillRef, shape, traveller, travelling };
 }
 
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
@@ -444,7 +561,13 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
   const dockHidden = useDockHidden();
   const autoHide = useDockAutoHideActive();
   useHideDockOnScroll();
-  const { phase: dockPhase, pillRef, shape: morphShape } = useDockMorph(dockHidden, dockRef);
+  const {
+    phase: dockPhase,
+    pillRef,
+    shape: morphShape,
+    traveller,
+    travelling,
+  } = useDockMorph(dockHidden, dockRef, indRef, () => (glowKey ? tabRefs.current[glowKey] : null));
   const docked = dockPhase === 'docked';
   const tucked = dockPhase === 'tucked';
   const handleDragY = useRef<number | null>(null);
@@ -628,6 +751,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
       </button>
 
       {morphShape}
+      {traveller}
 
       <motion.nav
         className="fixed left-0 right-0 z-50 px-3"
@@ -640,7 +764,8 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
         initial={false}
         // The bar stays put; its contents fade out of the glass as the morph
         // shape takes over, and fade back in once the shape has grown back.
-        animate={{ opacity: docked ? 1 : 0, scale: docked ? 1 : 0.985 }}
+        // No scale: the glow's hop back measures the tabs while it's hidden.
+        animate={{ opacity: docked ? 1 : 0 }}
         transition={{ duration: docked ? 0.2 : ICON_FADE_S, ease: [0.32, 0.72, 0, 1] }}
         aria-hidden={!docked || undefined}
         inert={!docked}
@@ -656,7 +781,13 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
           className="glass relative mx-auto flex max-w-md items-stretch justify-around gap-1 p-1.5 shadow-2xl"
         >
           {/* The hopping glow (useHopIndicator). Behind the tabs and the +. */}
-          <div ref={indRef} aria-hidden="true" className="pointer-events-none absolute left-0 top-0 rounded-2xl bg-white/10" />
+          {/* Hidden while it's out of the bar as the tuck traveller (useDockMorph). */}
+          <div
+            ref={indRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-0 rounded-2xl bg-white/10"
+            style={{ visibility: docked && !travelling ? 'visible' : 'hidden' }}
+          />
           {LEFT_TABS.map((tab) => (
             <NavButton
               key={tab.id}
