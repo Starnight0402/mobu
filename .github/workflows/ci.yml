@@ -79,6 +79,9 @@ jobs:
       # Spins up an anonymous local Convex backend (no account, no secrets)
       # plus the production build pointed at it. See scripts/e2e-backend.mjs.
       - name: Playwright
+        # Print the throwaway backend's startup log, so a hang shows why.
+        env:
+          E2E_VERBOSE: "1"
         run: npm run test:e2e
 
       - name: Upload report on failure
