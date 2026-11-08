@@ -25,6 +25,8 @@
   --color-coral: #ff8f7e;
   --color-sage: #9ed9b6;
   --color-gold: #f2c879;
+  /* The partner's colour in Health (you are lavender). */
+  --color-azure: #9cc8ff;
 }
 
 /* Plain custom properties, not @theme: Tailwind only emits @theme variables it
@@ -117,6 +119,7 @@
     --color-coral: #e2604e;
     --color-sage: #3fa86b;
     --color-gold: #b9852a;
+    --color-azure: #2f6fc0;
     --bubble-sent: #8d7bb5;
     --bubble-sent-fg: #ffffff;
     --bubble-delivered: #6a45c9;

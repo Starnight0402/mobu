@@ -9,6 +9,8 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Local plugins have to be registered before the bridge starts.
         registerPlugin(MobuHapticsPlugin.class);
+        registerPlugin(MobuHealthConnectPlugin.class);
+        registerPlugin(MobuSharePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

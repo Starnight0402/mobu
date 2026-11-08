@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
+import { healthTables } from "./health/schema";
 
 // Shared by hand-logged `fights` and chat-detected `conflictEpisodes` so the
 // dashboard can pool both into one topic breakdown. Categories were derived
@@ -268,6 +269,7 @@ export default defineSchema({
       v.literal("capsule"),
       v.literal("streak"),
       v.literal("fight"),
+      v.literal("health"),
     ),
     title: v.string(),
     body: v.string(),
@@ -405,4 +407,6 @@ export default defineSchema({
   })
     .index("by_callId", ["callId"])
     .index("by_callId_and_to", ["callId", "toUserId"]),
+
+  ...healthTables,
 });

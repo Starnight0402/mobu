@@ -13,7 +13,8 @@ export type NotificationKind =
   | "insight"
   | "capsule"
   | "streak"
-  | "fight";
+  | "fight"
+  | "health";
 
 interface NotifyArgs {
   userId: Id<"users">;

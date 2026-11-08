@@ -26,6 +26,8 @@ Access is hard-restricted to two allowlisted email addresses at signup — there
 
 **Insights** — a handful of patterns computed from your own data (mood trend week-over-week, most common shared activity, most common day together, memory-capture pace). No AI involved — genuinely computed, not generated.
 
+**Health** — records and tracking for both of you, under Us → Health. Upload or scan reports (an AI reads the date, lab and every value with its printed range; you check them before anything is saved), and each value is charted over time per marker. Also: medicines with dose reminders, refill and interaction warnings and a missed-dose nudge to your partner; vitals and sleep from Android Health Connect; visits with fasting/question prep; vaccines and screenings by age; symptoms, care mode for when one of you is ill, optional cycle tracking, mind check-ins, Medical ID with a QR page, insurance and claims, and view-only doctor links. Each of you chooses per category what the other sees (enforced on the server, `convex/health/access.ts`). Mobu keeps records; it doesn't diagnose.
+
 **Settings** — currency, timezone, a light/dark theme toggle that syncs across devices, sign-out, and a "download all our data" button that exports everything as JSON.
 
 ## Stack
@@ -35,6 +37,15 @@ Access is hard-restricted to two allowlisted email addresses at signup — there
 - **Auth**: Convex Auth (email + password), with a hardcoded allowlist of the two permitted email addresses enforced server-side.
 - **PWA**: `vite-plugin-pwa` (injectManifest mode) — installable on Android/iOS home screens, works offline for the app shell.
 - **Hosting**: GitHub Pages, deployed via GitHub Actions on every push to `main` (see `.github/workflows/deploy.yml`).
+
+### Health setup
+
+| What | How |
+| --- | --- |
+| Report reading | Set `GEMINI_API_KEY` in the Convex dashboard (optional `GEMINI_MODEL`). Without it, uploads still work and you type values in. Each person can switch AI reading off in Health settings. |
+| Health Connect | Needs the Android app (APK 1.4+). It's a native plugin, so unlike the web app it doesn't update over the air. |
+| ABHA verification | Optional. Register Mobu at sandbox.abdm.gov.in, then set `ABDM_CLIENT_ID` and `ABDM_CLIENT_SECRET` (and `ABDM_ENV=production` when live). Without them, the number is saved as typed. |
+| Reminders | Run from Convex crons (`convex/crons.ts`) as normal Mobu notifications. |
 
 ## Local development
 

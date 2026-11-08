@@ -19,4 +19,10 @@ crons.daily(
   internal.recurring.runDue,
 );
 
+// Health: dose times, the missed-dose nudge, fasting and appointment reminders.
+crons.interval("health reminders", { minutes: 5 }, internal.health.reminders.tick);
+
+// 02:30 UTC is 08:00 IST: refills, prevention, renewals, expiring medicines.
+crons.daily("health daily", { hourUTC: 2, minuteUTC: 30 }, internal.health.reminders.daily);
+
 export default crons;

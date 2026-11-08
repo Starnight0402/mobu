@@ -21,6 +21,14 @@ import {
   Swords,
   Heart,
   Smile,
+  HeartPulse,
+  Pill,
+  FileText,
+  Contact,
+  Stethoscope,
+  HandHeart,
+  Thermometer,
+  Activity,
   LucideIcon,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -30,6 +38,7 @@ import { haptic } from '../lib/haptics';
 import { useBackHandler } from '../lib/backButtonStack';
 import { OPEN_COMPOSER_EVENT, retapTab } from '../lib/navigation';
 import { BottomSheet } from './BottomSheet';
+import { setHealthIntent } from '../lib/healthIntent';
 
 interface NavigationProps {
   activeTab: string;
@@ -65,6 +74,17 @@ const US_GROUPS: { title: string; tabs: TabDef[] }[] = [
     ],
   },
   {
+    title: 'Health',
+    tabs: [
+      { id: 'health', icon: HeartPulse, label: 'Health' },
+      { id: 'health-meds', icon: Pill, label: 'Medicines' },
+      { id: 'health-records', icon: FileText, label: 'Records' },
+      { id: 'health-medid', icon: Contact, label: 'Medical ID' },
+      { id: 'health-visits', icon: Stethoscope, label: 'Visits' },
+      { id: 'health-care', icon: HandHeart, label: 'Care mode' },
+    ],
+  },
+  {
     title: 'Our life',
     tabs: [
       { id: 'logs', icon: ListChecks, label: 'Logs' },
@@ -87,12 +107,16 @@ const US_GROUPS: { title: string; tabs: TabDef[] }[] = [
 ];
 const MORE_TABS: TabDef[] = US_GROUPS.flatMap((g) => g.tabs);
 
-const ADD_ACTIONS: { id: string; label: string; hint: string; icon: LucideIcon; tab: string; composer?: boolean }[] = [
+const ADD_ACTIONS: { id: string; label: string; hint: string; icon: LucideIcon; tab: string; composer?: boolean; intent?: string }[] = [
   { id: 'memory', label: 'Memory', hint: 'Photos, a trip, a moment', icon: ImageIcon, tab: 'memories', composer: true },
   { id: 'log', label: 'Mood or log', hint: 'How the day went', icon: Smile, tab: 'track' },
   { id: 'expense', label: 'Expense', hint: 'Split a bill', icon: Scale, tab: 'split' },
   { id: 'goal', label: 'Goal', hint: 'Something to do together', icon: Target, tab: 'goals' },
   { id: 'capsule', label: 'Time capsule', hint: 'A note for later', icon: Lock, tab: 'capsules' },
+  { id: 'h-report', label: 'Report or document', hint: 'Scan or upload a lab report, prescription, scan', icon: FileText, tab: 'health-records', intent: 'upload' },
+  { id: 'h-reading', label: 'Health reading', hint: 'BP, sugar, weight, temperature', icon: Activity, tab: 'health-vitals', intent: 'log' },
+  { id: 'h-medicine', label: 'Medicine', hint: 'Add one, with reminders', icon: Pill, tab: 'health-meds', intent: 'add' },
+  { id: 'h-symptom', label: 'Symptom', hint: 'How you feel right now', icon: Thermometer, tab: 'health-symptoms', intent: 'log' },
 ];
 
 /* ---------------------------------------------------------------------------
@@ -546,7 +570,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
   useBackHandler(moreOpen, () => setMoreOpen(false));
   useBackHandler(addOpen, () => setAddOpen(false));
 
-  const moreIsActive = MORE_TABS.some((t) => t.id === activeTab);
+  const moreIsActive = MORE_TABS.some((t) => t.id === activeTab) || activeTab.startsWith('health');
   const isPrimary = PRIMARY_TABS.some((t) => t.id === activeTab);
   const glowKey: DockKey | null = moreOpen
     ? 'us'
@@ -687,6 +711,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab 
                             // Without storage the user just lands on Memories and taps +.
                           }
                         }
+                        if (a.intent) setHealthIntent(a.tab, a.intent);
                         setActiveTab(a.tab);
                       }}
                       className="flex min-h-[56px] w-full items-center gap-4 rounded-2xl border border-white/8 bg-surface px-4 py-3 text-left transition-colors hover:bg-raised active:scale-[0.99]"

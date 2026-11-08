@@ -68,6 +68,24 @@ const CallView = lazyScreen(() => import('./components/CallView').then((m) => m.
 const NotificationsView = lazyScreen(() =>
   import('./components/NotificationsView').then((m) => m.NotificationsView),
 );
+// Health: every screen is its own chunk, so none of it weighs on the first load.
+const HealthHome = lazyScreen(() => import('./components/health/HealthHome').then((m) => m.HealthHome));
+const HealthRecords = lazyScreen(() => import('./components/health/RecordsView').then((m) => m.RecordsView));
+const HealthLabs = lazyScreen(() => import('./components/health/LabsView').then((m) => m.LabsView));
+const HealthVitals = lazyScreen(() => import('./components/health/VitalsView').then((m) => m.VitalsView));
+const HealthMeds = lazyScreen(() => import('./components/health/MedsView').then((m) => m.MedsView));
+const HealthVisits = lazyScreen(() => import('./components/health/VisitsView').then((m) => m.VisitsView));
+const HealthPrevention = lazyScreen(() => import('./components/health/PreventionView').then((m) => m.PreventionView));
+const HealthSymptoms = lazyScreen(() => import('./components/health/SymptomsView').then((m) => m.SymptomsView));
+const HealthCare = lazyScreen(() => import('./components/health/CareView').then((m) => m.CareView));
+const HealthMedId = lazyScreen(() => import('./components/health/MedIdView').then((m) => m.MedIdView));
+const HealthHistory = lazyScreen(() => import('./components/health/HistoryView').then((m) => m.HistoryView));
+const HealthCycle = lazyScreen(() => import('./components/health/CycleView').then((m) => m.CycleView));
+const HealthMind = lazyScreen(() => import('./components/health/MindView').then((m) => m.MindView));
+const HealthInsurance = lazyScreen(() => import('./components/health/InsuranceView').then((m) => m.InsuranceView));
+const HealthShare = lazyScreen(() => import('./components/health/ShareView').then((m) => m.ShareView));
+const HealthSettings = lazyScreen(() => import('./components/health/SettingsHealth').then((m) => m.SettingsHealth));
+const HealthBridge = lazyScreen(() => import('./components/health/HealthBridge').then((m) => m.HealthBridge));
 // Deliberately not in PRELOAD: three.js plus ~400 KB of character art per
 // expression, fetched only when someone actually opens Mini.
 const MiniWorldView = lazyScreen(() => import('./components/mini/MiniWorldView').then((m) => m.MiniWorldView));
@@ -76,6 +94,7 @@ const MiniWorldView = lazyScreen(() => import('./components/mini/MiniWorldView')
 const PRELOAD = [
   ChatView, SplitView, MemoryBoard, TrackingForm, GoalsView, CapsulesView, TimelineView, NotificationsView,
   SettingsView, LogsView, InsightsView, StatsView, FightLogView, CallView, MapView, RelationshipAnalyzerView,
+  HealthHome, HealthRecords, HealthMeds, HealthVitals, HealthLabs, HealthVisits,
 ];
 
 export default function App() {
@@ -237,9 +256,12 @@ function usePrefetchScreens() {
   }, [client, isAuthenticated]);
 }
 
-const VALID_TABS = new Set([
+const HEALTH_TABS = {"HealthHome":"health","HealthRecords":"health-records","HealthLabs":"health-labs","HealthVitals":"health-vitals","HealthMeds":"health-meds","HealthVisits":"health-visits","HealthPrevention":"health-prevention","HealthSymptoms":"health-symptoms","HealthCare":"health-care","HealthMedId":"health-medid","HealthHistory":"health-history","HealthCycle":"health-cycle","HealthMind":"health-mind","HealthInsurance":"health-insurance","HealthShare":"health-share","HealthSettings":"health-settings"} as const;
+
+const VALID_TABS = new Set<string>([
   'home', 'track', 'chat', 'call', 'memories', 'timeline', 'goals', 'capsules', 'insights',
   'analyzer', 'fights', 'map', 'stats', 'split', 'logs', 'notifications', 'settings', 'mini',
+  ...Object.values(HEALTH_TABS),
 ]);
 
 /**
@@ -354,6 +376,38 @@ function AuthenticatedApp() {
         return <MiniWorldView key="mini" />;
       case 'settings':
         return <SettingsView key="settings" />;
+      case 'health':
+        return <HealthHome key="health" />;
+      case 'health-records':
+        return <HealthRecords key="health-records" />;
+      case 'health-labs':
+        return <HealthLabs key="health-labs" />;
+      case 'health-vitals':
+        return <HealthVitals key="health-vitals" />;
+      case 'health-meds':
+        return <HealthMeds key="health-meds" />;
+      case 'health-visits':
+        return <HealthVisits key="health-visits" />;
+      case 'health-prevention':
+        return <HealthPrevention key="health-prevention" />;
+      case 'health-symptoms':
+        return <HealthSymptoms key="health-symptoms" />;
+      case 'health-care':
+        return <HealthCare key="health-care" />;
+      case 'health-medid':
+        return <HealthMedId key="health-medid" />;
+      case 'health-history':
+        return <HealthHistory key="health-history" />;
+      case 'health-cycle':
+        return <HealthCycle key="health-cycle" />;
+      case 'health-mind':
+        return <HealthMind key="health-mind" />;
+      case 'health-insurance':
+        return <HealthInsurance key="health-insurance" />;
+      case 'health-share':
+        return <HealthShare key="health-share" />;
+      case 'health-settings':
+        return <HealthSettings key="health-settings" />;
       default:
         return <Dashboard key="home" onNavigate={setActiveTab} />;
     }
@@ -362,6 +416,9 @@ function AuthenticatedApp() {
   return (
     <NotificationProvider onNavigate={setActiveTab}>
       <ChatReceipts />
+      <Suspense fallback={null}>
+        <HealthBridge />
+      </Suspense>
       <AppShell activeTab={activeTab} setActiveTab={setActiveTab}>
         {/* Screens are code-split (see lazyScreen). Normally already
             preloaded, so this fallback only shows on a cold deep link. */}

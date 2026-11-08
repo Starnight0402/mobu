@@ -8,7 +8,7 @@ import { Avatar } from './Avatar';
 import { useNotifications } from './NotificationProvider';
 import { currencySymbol } from '../lib/currency';
 import { haptic } from '../lib/haptics';
-import { Image as ImageIcon, Bell, Phone, MessageCircle, Lock, Wallet, Flame, ChevronRight, Sparkles, Check } from 'lucide-react';
+import { HeartPulse, Image as ImageIcon, Bell, Phone, MessageCircle, Lock, Wallet, Flame, ChevronRight, Sparkles, Check } from 'lucide-react';
 
 interface DashboardProps {
   /** Lets cards act as entry points into their full screens. */
@@ -53,6 +53,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const insights = useQuery(api.insights.list) ?? [];
   const capsules = useQuery(api.capsules.list) ?? [];
   const streak = useQuery(api.tracking.streak);
+  const health = useQuery(api.health.summary.today);
   const balance = useQuery(api.expenses.balance);
   const live = useQuery(api.liveLocations.both);
   const addEntry = useMutation(api.tracking.add);
@@ -269,6 +270,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         {moodError && <p className="text-xs text-coral">Couldn't save that — try again.</p>}
         {moodSaved != null && !moodError && <p className="text-xs text-white/50">Logged. {partnerName} will see it in Our week.</p>}
       </section>
+
+      {health && (health.attention.length > 0 || health.doses.length > 0) && (
+        <button onClick={() => onNavigate('health')} className="glass flex w-full flex-col gap-3 p-4 text-left">
+          <span className="flex items-center justify-between">
+            <span className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-white/45"><HeartPulse size={14} className="text-coral" />Health today</span>
+            <ChevronRight size={16} className="text-white/25" />
+          </span>
+          <span className="flex items-center gap-4">
+            <span className="flex flex-col">
+              <span className="font-mono text-2xl leading-none">
+                {health.doseCounts.me.taken + health.doseCounts.partner.taken}/{health.doseCounts.me.total + health.doseCounts.partner.total}
+              </span>
+              <span className="mt-1 text-xs text-white/45">doses taken</span>
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-1.5 text-[13px]">
+              {health.attention.slice(0, 3).map((a) => (
+                <span key={a.key} className="flex items-center gap-2 truncate">
+                  <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${a.tone === 'coral' ? 'bg-coral' : a.tone === 'gold' ? 'bg-gold' : a.tone === 'sage' ? 'bg-sage' : 'bg-nothing-purple'}`} />
+                  <span className="truncate">{a.title}</span>
+                </span>
+              ))}
+              {health.attention.length === 0 && <span className="text-white/45">Nothing needs attention</span>}
+            </span>
+          </span>
+        </button>
+      )}
 
       <section className="grid grid-cols-2 gap-3">
         <button onClick={() => onNavigate('capsules')} className="glass flex flex-col gap-2.5 p-4 text-left">
