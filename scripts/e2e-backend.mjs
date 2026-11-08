@@ -57,30 +57,47 @@ const convex = (...args) => {
 };
 
 // --- run --------------------------------------------------------------------
-const dev = spawn(process.execPath, [cli, 'dev', '--tail-logs', 'disable'], { cwd: dir, env });
-let ready = false;
-let log = '';
+// Pinned so E2E doesn't change underneath us whenever Convex publishes a
+// backend release. Bump deliberately (CI caches binaries keyed on this file).
+const BACKEND_VERSION = process.env.E2E_CONVEX_BACKEND ?? 'precompiled-2026-10-22-1447815';
+// Starting downloads the backend and its dashboard from GitHub releases; a
+// transient download failure there shouldn't fail the build.
+const MAX_ATTEMPTS = 3;
 
-const onOutput = (chunk) => {
-  const text = chunk.toString();
-  log += text;
-  if (process.env.E2E_VERBOSE) process.stdout.write(text);
-  if (!ready && /Convex functions ready/.test(text)) {
-    ready = true;
-    try {
-      configure();
-    } catch (err) {
-      console.error(err.message);
-      shutdown(1);
+let dev;
+let ready = false;
+
+function start(attempt) {
+  let log = '';
+  dev = spawn(
+    process.execPath,
+    [cli, 'dev', '--tail-logs', 'disable', '--local-backend-version', BACKEND_VERSION],
+    { cwd: dir, env },
+  );
+  const onOutput = (chunk) => {
+    const text = chunk.toString();
+    log += text;
+    if (process.env.E2E_VERBOSE) process.stdout.write(text);
+    if (!ready && /Convex functions ready/.test(text)) {
+      ready = true;
+      try {
+        configure();
+      } catch (err) {
+        console.error(err.message);
+        shutdown(1);
+      }
     }
-  }
-};
-dev.stdout.on('data', onOutput);
-dev.stderr.on('data', onOutput);
-dev.on('exit', (code) => {
-  if (!ready) console.error(`convex dev exited early (${code}):\n${log}`);
-  process.exit(code ?? 1);
-});
+  };
+  dev.stdout.on('data', onOutput);
+  dev.stderr.on('data', onOutput);
+  dev.on('exit', (code) => {
+    if (ready) process.exit(code ?? 1);
+    console.error(`convex dev exited before ready (attempt ${attempt}/${MAX_ATTEMPTS}, code ${code}):\n${log}`);
+    if (attempt >= MAX_ATTEMPTS) process.exit(code ?? 1);
+    setTimeout(() => start(attempt + 1), 5_000 * attempt);
+  });
+}
+start(1);
 
 function configure() {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });

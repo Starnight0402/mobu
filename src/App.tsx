@@ -25,33 +25,58 @@ import {
 } from './lib/navigation';
 import { DialogHost } from './components/Dialog';
 import { Dashboard } from './components/Dashboard';
-import { TrackingForm } from './components/TrackingForm';
-import { MemoryBoard } from './components/MemoryBoard';
-import { StatsView } from './components/StatsView';
-import { SplitView } from './components/SplitView';
-import { LogsView } from './components/LogsView';
-import { SettingsView } from './components/SettingsView';
-import { TimelineView } from './components/TimelineView';
-import { GoalsView } from './components/GoalsView';
-import { CapsulesView } from './components/CapsulesView';
-import { InsightsView } from './components/InsightsView';
-import { RelationshipAnalyzerView } from './components/RelationshipAnalyzerView';
-import { FightLogView } from './components/FightLogView';
-import { MapView } from './components/MapView';
-import { CHAT_PAGE, ChatView } from './components/ChatView';
-import { CallView } from './components/CallView';
 import { SignInScreen } from './components/SignInScreen';
 import { NameSetup } from './components/NameSetup';
 import { LightboxProvider } from './components/Lightbox';
 import { CallProvider } from './components/CallProvider';
 import { NotificationProvider, useNotifications } from './components/NotificationProvider';
-import { NotificationsView } from './components/NotificationsView';
+import { CHAT_PAGE } from './lib/chat';
 import { motion, MotionConfig } from 'motion/react';
 import { api } from '../convex/_generated/api';
 
-const MiniWorldView = React.lazy(() =>
-  import('./components/mini/MiniWorldView').then((m) => ({ default: m.MiniWorldView })),
+/**
+ * A screen split into its own chunk, plus `preload()` to fetch that chunk
+ * before the first visit. Every screen except Home loads this way, so the
+ * sign-in screen and Home don't wait on recharts, d3, Google Maps and the
+ * rest; usePrefetchScreens() then warms the chunks while the app is idle, so
+ * a tab tap is still instant.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyScreen<T extends React.ComponentType<any>>(load: () => Promise<T>) {
+  let pending: Promise<{ default: T }> | undefined;
+  const preload = () => (pending ??= load().then((component) => ({ default: component })));
+  return Object.assign(React.lazy(preload), { preload });
+}
+
+const TrackingForm = lazyScreen(() => import('./components/TrackingForm').then((m) => m.TrackingForm));
+const MemoryBoard = lazyScreen(() => import('./components/MemoryBoard').then((m) => m.MemoryBoard));
+const StatsView = lazyScreen(() => import('./components/StatsView').then((m) => m.StatsView));
+const SplitView = lazyScreen(() => import('./components/SplitView').then((m) => m.SplitView));
+const LogsView = lazyScreen(() => import('./components/LogsView').then((m) => m.LogsView));
+const SettingsView = lazyScreen(() => import('./components/SettingsView').then((m) => m.SettingsView));
+const TimelineView = lazyScreen(() => import('./components/TimelineView').then((m) => m.TimelineView));
+const GoalsView = lazyScreen(() => import('./components/GoalsView').then((m) => m.GoalsView));
+const CapsulesView = lazyScreen(() => import('./components/CapsulesView').then((m) => m.CapsulesView));
+const InsightsView = lazyScreen(() => import('./components/InsightsView').then((m) => m.InsightsView));
+const RelationshipAnalyzerView = lazyScreen(() =>
+  import('./components/RelationshipAnalyzerView').then((m) => m.RelationshipAnalyzerView),
 );
+const FightLogView = lazyScreen(() => import('./components/FightLogView').then((m) => m.FightLogView));
+const MapView = lazyScreen(() => import('./components/MapView').then((m) => m.MapView));
+const ChatView = lazyScreen(() => import('./components/ChatView').then((m) => m.ChatView));
+const CallView = lazyScreen(() => import('./components/CallView').then((m) => m.CallView));
+const NotificationsView = lazyScreen(() =>
+  import('./components/NotificationsView').then((m) => m.NotificationsView),
+);
+// Deliberately not in PRELOAD: three.js plus ~400 KB of character art per
+// expression, fetched only when someone actually opens Mini.
+const MiniWorldView = lazyScreen(() => import('./components/mini/MiniWorldView').then((m) => m.MiniWorldView));
+
+/** Chat first: it's the most-opened screen after Home. */
+const PRELOAD = [
+  ChatView, SplitView, MemoryBoard, TrackingForm, GoalsView, CapsulesView, TimelineView, NotificationsView,
+  SettingsView, LogsView, InsightsView, StatsView, FightLogView, CallView, MapView, RelationshipAnalyzerView,
+];
 
 export default function App() {
   return (
@@ -65,6 +90,14 @@ export default function App() {
       </LightboxProvider>
     </PullToRefresh>
     </MotionConfig>
+  );
+}
+
+function ScreenLoading() {
+  return (
+    <div className="flex min-h-[50dvh] items-center justify-center" role="status" aria-label="Loading">
+      <div className="w-2 h-2 rounded-full bg-nothing-purple animate-pulse" />
+    </div>
   );
 }
 
@@ -186,6 +219,9 @@ function usePrefetchScreens() {
       prefetchQuery(client, api.liveLocations.both);
       prefetchQuery(client, api.settings.get);
       prefetchQuery(client, api.users.partner);
+      // Screen code too, so the first tap on a tab never waits on a download.
+      // A failed preload is harmless: React.lazy retries on the actual visit.
+      for (const screen of PRELOAD) screen.preload().catch(() => {});
     };
     // After the current screen's own queries, not competing with them.
     const w = window as Window & {
@@ -315,11 +351,7 @@ function AuthenticatedApp() {
       case 'notifications':
         return <NotificationsView key="notifications" onNavigate={setActiveTab} />;
       case 'mini':
-        return (
-          <Suspense key="mini" fallback={null}>
-            <MiniWorldView />
-          </Suspense>
-        );
+        return <MiniWorldView key="mini" />;
       case 'settings':
         return <SettingsView key="settings" />;
       default:
@@ -331,7 +363,9 @@ function AuthenticatedApp() {
     <NotificationProvider onNavigate={setActiveTab}>
       <ChatReceipts />
       <AppShell activeTab={activeTab} setActiveTab={setActiveTab}>
-        {renderContent()}
+        {/* Screens are code-split (see lazyScreen). Normally already
+            preloaded, so this fallback only shows on a cold deep link. */}
+        <Suspense fallback={<ScreenLoading />}>{renderContent()}</Suspense>
       </AppShell>
     </NotificationProvider>
   );

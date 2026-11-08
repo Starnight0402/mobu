@@ -7,6 +7,7 @@ import { Id } from '../../convex/_generated/dataModel';
 import { compressImage, UnreadableImageError } from '../lib/image';
 import { useLightbox } from './Lightbox';
 import { haptic } from '../lib/haptics';
+import { CHAT_PAGE } from '../lib/chat';
 import { goToTab, onRetapTab } from '../lib/navigation';
 import { useBackHandler } from '../lib/backButtonStack';
 import { hideDock, useDockAutoHide, useDockHidden } from '../lib/dock';
@@ -87,7 +88,6 @@ function useLongPress<T>(onLongPress: (item: T) => void, ms = 450) {
 const isAtBottom = () =>
   window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 200;
 
-export const CHAT_PAGE = 200;
 const PAGE = CHAT_PAGE;
 const COARSE_POINTER = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 

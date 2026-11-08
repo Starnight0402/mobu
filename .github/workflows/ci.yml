@@ -58,6 +58,14 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # The local Convex backend + dashboard binaries (version pinned in
+      # scripts/e2e-backend.mjs). Cached so most runs download nothing.
+      - name: Cache local Convex backend
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/convex
+          key: convex-local-${{ runner.os }}-${{ hashFiles('scripts/e2e-backend.mjs') }}
+
       # Spins up an anonymous local Convex backend (no account, no secrets)
       # plus the production build pointed at it. See scripts/e2e-backend.mjs.
       - name: Playwright
