@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 const BACKEND = 'http://127.0.0.1:3210';
 const APP = 'http://127.0.0.1:4173';
+// Set by the post-deploy smoke test: run read-only specs against the live
+// site instead of booting a local backend and build.
+const LIVE = process.env.E2E_BASE_URL;
 
 export default defineConfig({
   testDir: 'e2e',
@@ -14,7 +17,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
-    baseURL: APP,
+    baseURL: LIVE ?? APP,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -22,7 +25,7 @@ export default defineConfig({
     serviceWorkers: 'block',
   },
   projects: [{ name: 'mobile-chrome', use: { ...devices['Pixel 7'] } }],
-  webServer: [
+  webServer: LIVE ? undefined : [
     {
       command: 'node scripts/e2e-backend.mjs',
       url: 'http://127.0.0.1:3299',

@@ -1,0 +1,98 @@
+name: Deploy
+
+# The single definition of "ship this commit to production". Called by CI
+# (after every check passes on main) and by Rollback (an older commit).
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit SHA or tag to deploy
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.ref }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Pushes Convex functions/schema to production, then builds the
+      # frontend with VITE_CONVEX_URL automatically set to that deployment's
+      # URL. Convex refuses a schema that existing data doesn't satisfy, so a
+      # bad schema change fails here rather than corrupting anything.
+      # The other VITE_* vars are optional -- Maps/TURN just show their
+      # "not connected" fallback state if these secrets aren't set.
+      - name: Deploy Convex backend and build frontend
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+          VITE_TURN_URL: ${{ secrets.VITE_TURN_URL }}
+          VITE_TURN_USERNAME: ${{ secrets.VITE_TURN_USERNAME }}
+          VITE_TURN_CREDENTIAL: ${{ secrets.VITE_TURN_CREDENTIAL }}
+        run: npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name VITE_CONVEX_URL
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      # --- post-deploy smoke test -------------------------------------------
+      # Proves the live site is actually serving THIS build and that it boots.
+      - name: Wait for the CDN to serve this build
+        env:
+          URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "$URL?nocache=$(date +%s)" | cmp -s - dist/index.html; then
+              echo "Live site is serving this build."; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::After 5 minutes $URL still isn't serving this build."
+          exit 1
+
+      # The smoke test comes from the workflow's own commit, not the deployed
+      # ref: a rollback target can predate the test tooling.
+      - name: Check out smoke-test tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: smoke
+
+      - name: Install smoke-test tooling
+        working-directory: smoke
+        run: npm ci && npx playwright install --with-deps chromium
+
+      - name: Smoke test the live site
+        working-directory: smoke
+        env:
+          E2E_BASE_URL: ${{ steps.deployment.outputs.page_url }}
+        # Read-only: loads the signed-out app and fails on any uncaught error.
+        run: npx playwright test e2e/perf.spec.ts --grep "boots without uncaught errors" --retries 2
+
+      - name: What to do now
+        if: failure()
+        run: |
+          echo "::error::Deploy of ${{ inputs.ref }} failed or the live site is broken. To restore the last good version: Actions → Rollback → Run workflow, with the SHA of the last green deploy. See docs/RUNBOOK.md."

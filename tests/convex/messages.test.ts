@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../convex/_generated/api';
 import { couple, setup } from './helpers';
 
 const texts = (r: { messages: { text?: string }[] }) => r.messages.map((m) => m.text);
 
 describe('chat', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('delivers a message to the partner with a notification', async () => {
     const t = setup();
     const { a, b, bId } = await couple(t);
@@ -94,9 +96,16 @@ describe('chat', () => {
   it('clear chat only clears your own view', async () => {
     const t = setup();
     const { a, b } = await couple(t);
+    vi.useFakeTimers();
     await a.mutation(api.messages.send, { text: 'before' });
+    vi.advanceTimersByTime(1_000);
     await a.mutation(api.messages.clearChat, {});
+    // Real clocks: on a fast machine the next message could land in the same
+    // millisecond as the clear and tie on _creationTime. People don't type
+    // that fast; the fake clock keeps the test deterministic.
+    vi.advanceTimersByTime(1_000);
     await b.mutation(api.messages.send, { text: 'after' });
+    vi.useRealTimers();
 
     expect(texts(await a.query(api.messages.list, {}))).toEqual(['after']);
     expect(texts(await b.query(api.messages.list, {}))).toEqual(['before', 'after']);

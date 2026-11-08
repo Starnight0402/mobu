@@ -1,0 +1,89 @@
+name: Backup
+
+# Nightly encrypted export of production (data AND uploaded files), kept for
+# 90 days, plus a restore drill proving each backup can actually be restored.
+#
+# This repo is PUBLIC: workflow artifacts are downloadable by anyone signed in
+# to GitHub. Backups are therefore encrypted (AES-256, BACKUP_PASSPHRASE)
+# before upload, and the job refuses to run without the passphrase. Logs show
+# table names and counts only, never contents.
+on:
+  schedule:
+    - cron: '30 21 * * *' # 03:00 IST daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Require the encryption passphrase
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::BACKUP_PASSPHRASE secret is not set. Refusing to back up: this repo is public, so an unencrypted export would be downloadable by anyone. See docs/RUNBOOK.md."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Export production (data + file storage)
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: npx convex export --include-file-storage --path backup.zip > /dev/null
+
+      - name: Encrypt
+        id: encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          name="mobu-backup-$(date -u +%Y-%m-%d)"
+          mkdir out
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt \
+            -in backup.zip -out "out/${name}.zip.enc" -pass env:BACKUP_PASSPHRASE
+          (cd out && sha256sum "${name}.zip.enc" > "${name}.sha256")
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          echo "Encrypted backup: $(du -h "out/${name}.zip.enc" | cut -f1)"
+
+      # Upload before the drill: even if the drill fails, keep the backup.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.encrypt.outputs.name }}
+          path: out/
+          retention-days: 90
+          if-no-files-found: error
+
+      # --- restore drill -----------------------------------------------------
+      # Restores the plaintext export into a throwaway local backend running
+      # TODAY's schema and checks every table comes back whole. A failure here
+      # also means production data no longer fits the current schema.
+      - name: Cache local Convex backend
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/convex
+          key: convex-local-${{ runner.os }}-${{ hashFiles('scripts/e2e-backend.mjs') }}
+
+      - name: Fetch local Convex backend
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/fetch-convex-backend.sh
+
+      - name: Restore drill
+        run: bash scripts/backup-drill.sh backup.zip
+
+      - name: Remove plaintext
+        if: always()
+        run: rm -f backup.zip

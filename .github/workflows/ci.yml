@@ -29,6 +29,11 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # Backup and Rollback only ever run from main (schedule / manual), so a
+      # mistake in them would otherwise surface exactly when you need them.
+      - name: Lint workflow files
+        run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.7 -color
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -90,44 +95,11 @@ jobs:
     name: Deploy to production
     needs: [verify, e2e]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
     permissions:
       contents: read
       pages: write
       id-token: write
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      # Pushes Convex functions/schema to production, then builds the
-      # frontend with VITE_CONVEX_URL automatically set to that deployment's
-      # URL (so it never drifts from what --from-file/manual deploys use).
-      # The other VITE_* vars are optional -- Maps/TURN just show their
-      # "not connected" fallback state if these secrets aren't set.
-      - name: Deploy Convex backend and build frontend
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
-          VITE_TURN_URL: ${{ secrets.VITE_TURN_URL }}
-          VITE_TURN_USERNAME: ${{ secrets.VITE_TURN_USERNAME }}
-          VITE_TURN_CREDENTIAL: ${{ secrets.VITE_TURN_CREDENTIAL }}
-        run: npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name VITE_CONVEX_URL
-
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-      - id: deployment
-        uses: actions/deploy-pages@v4
+    uses: ./.github/workflows/deploy.yml
+    with:
+      ref: ${{ github.sha }}
+    secrets: inherit

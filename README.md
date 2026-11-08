@@ -61,12 +61,14 @@ npm run build          # production build to dist/
 | Integration | `npm test` | Real Convex queries/mutations against the real schema, in memory via `convex-test` (`tests/convex/`). Includes a sweep that finds **every** public function and asserts it rejects signed-out callers. A new function without `requireUserId` fails here. |
 | Performance | `npm run test:perf` | Time budget for the chat-import pipeline on 30k messages (`tests/perf/`) |
 | Bundle | `npm run check:bundle` | Gzip size of the initial load and each lazy chunk vs `perf-budget.json` (a ratchet: lower it when you shrink the bundle) |
-| End-to-end | `npm run test:e2e` | Playwright on a phone profile: two people sign up, split a bill, settle it, and chat live, against the production build and a throwaway local Convex backend (no account needed; `scripts/e2e-backend.mjs`). Also cold-load timing. |
+| End-to-end | `npm run test:e2e` | Playwright on a phone profile, against the production build and a throwaway local Convex backend (no account needed; `scripts/e2e-backend.mjs`). Two people sign up, split a bill, settle it, chat live, pin a photo memory, complete a goal and lock a capsule; strangers and wrong passwords are refused. Also cold-load timing. |
 
 `npm run verify` runs everything except E2E. Run it before pushing.
 
 ## Deployment
 
-Push to `main` and GitHub Actions (`.github/workflows/ci.yml`) runs typecheck, unit, integration, perf, bundle and E2E checks. **Only if all of them pass** does it deploy: `npx convex deploy` pushes the backend, then builds and deploys the frontend to GitHub Pages. Pull requests run the same checks without deploying. Requires a `CONVEX_DEPLOY_KEY` repository secret and GitHub Pages set to deploy from "GitHub Actions" (Settings → Pages).
+Every push runs typecheck, unit, integration, perf, bundle and E2E checks (`.github/workflows/ci.yml`). On `main`, **only if all of them pass** does it deploy (`deploy.yml`): `npx convex deploy` pushes the backend, then builds and deploys the frontend to GitHub Pages, then smoke-tests the live site. Other branches run the same checks without deploying.
+
+Recovery: a **Rollback** workflow redeploys any earlier commit in one click, and a nightly **Backup** workflow exports all data and photos, encrypts them, keeps them 90 days and proves each one restores. See [docs/RUNBOOK.md](docs/RUNBOOK.md) for what to do when something breaks, and for the one-time `BACKUP_PASSPHRASE` setup. Requires a `CONVEX_DEPLOY_KEY` repository secret and GitHub Pages set to deploy from "GitHub Actions" (Settings → Pages).
 
 GitHub Pages sites are always publicly reachable at their URL — there's no way to make the served site itself private on a free plan. Privacy comes entirely from Convex-side auth checks on every query and mutation, not from hiding the URL.

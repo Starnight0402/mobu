@@ -1,0 +1,25 @@
+name: Rollback
+
+# Emergency path: redeploy a commit that was previously live and good.
+# Skips the test suite on purpose -- that commit already passed it, and when
+# production is broken, minutes matter. Code only: data is untouched (to
+# restore data, see docs/RUNBOOK.md → "Restore data from a backup").
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit SHA (or tag) of the last good deploy
+        required: true
+        type: string
+
+jobs:
+  rollback:
+    name: Roll back to ${{ inputs.ref }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      ref: ${{ inputs.ref }}
+    secrets: inherit
