@@ -112,9 +112,9 @@ footer{margin-top:40px;color:var(--mute);font-size:12px}.err{padding:60px 0;text
   return shell(`${id.name} · ${d.kind === "medid" ? "Medical ID" : "Health summary"}`, body);
 }
 
-export const sharePage = httpAction(async (ctx, request) => {
+export const sharePage = httpAction(async (ctx, request): Promise<Response> => {
   const token = new URL(request.url).searchParams.get("t") ?? "";
-  const result = /^[A-Za-z0-9_-]{20,64}$/.test(token)
+  const result: { error?: string; data?: unknown; expiresAt?: number } = /^[A-Za-z0-9_-]{20,64}$/.test(token)
     ? await ctx.runMutation(internal.health.sharing.openLink, { token })
     : { error: "This link isn't valid." };
   return new Response(renderSharePage(result), {

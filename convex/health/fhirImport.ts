@@ -16,9 +16,18 @@ import { UNIT } from "./vitals";
 
 const MAX_BUNDLE = 25 * 1024 * 1024;
 
+interface ImportCounts {
+  labs: number;
+  vitals: number;
+  history: number;
+  vaccines: number;
+  meds: number;
+  documents: number;
+}
+
 export const importBundle = action({
   args: { storageId: v.id("_storage") },
-  handler: async (ctx, { storageId }) => {
+  handler: async (ctx, { storageId }): Promise<ImportCounts> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not signed in");
     const blob = await ctx.storage.get(storageId);
@@ -38,7 +47,7 @@ export const importBundle = action({
         const id = await ctx.storage.store(new Blob([bytes], { type: d.mime }));
         docs.push({ title: d.title, date: d.date, type: d.type, storageId: id, mime: d.mime, size: bytes.length });
       }
-      const counts = await ctx.runMutation(internal.health.fhirImport.save, {
+      const counts: ImportCounts = await ctx.runMutation(internal.health.fhirImport.save, {
         userId,
         labs: parsed.labs.slice(0, 2000),
         vitals: parsed.vitals.filter((x) => Number.isFinite(x.time)).slice(0, 3000),
@@ -88,7 +97,7 @@ export const save = internalMutation({
       v.object({ title: v.string(), date: v.string(), type: v.string(), storageId: v.id("_storage"), mime: v.string(), size: v.number() }),
     ),
   },
-  handler: async (ctx, a) => {
+  handler: async (ctx, a): Promise<ImportCounts> => {
     const me = a.userId;
     const today = new Date().toISOString().slice(0, 10);
     const existingHistory = await ctx.db.query("historyItems").withIndex("by_owner_kind", (q) => q.eq("ownerId", me)).collect();

@@ -156,7 +156,7 @@ const normName = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
 
 export const run = internalAction({
   args: { id: v.id("healthRecords") },
-  handler: async (ctx, { id }) => {
+  handler: async (ctx, { id }): Promise<void> => {
     const data = await ctx.runQuery(internal.health.records.forExtraction, { id });
     if (!data) return;
     const { record, ownerName } = data;

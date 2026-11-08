@@ -115,7 +115,9 @@ export const latestTxn = internalQuery({
 
 export const requestOtp = action({
   args: { abhaNumber: v.string(), via: v.union(v.literal("aadhaar"), v.literal("abdm")) },
-  handler: async (ctx, { abhaNumber, via }) => {
+  // Explicit return types on every action that calls another Convex function:
+  // without them TypeScript can loop on the generated API types.
+  handler: async (ctx, { abhaNumber, via }): Promise<{ message: string }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not signed in");
     const digits = abhaNumber.replace(/\D/g, "");
@@ -172,7 +174,7 @@ const fmtAbha = (s: string | undefined) => {
 
 export const verifyOtp = action({
   args: { otp: v.string() },
-  handler: async (ctx, { otp }) => {
+  handler: async (ctx, { otp }): Promise<{ ok: boolean }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not signed in");
     if (!/^\d{6}$/.test(otp.trim())) throw new Error("The OTP has 6 digits");
